@@ -7,11 +7,12 @@
 # RPLIDAR C1 : pont serie CP210x (Silicon Labs), famille ttyUSB.
 SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", MODE="0660", GROUP="dialout", SYMLINK+="rplidar"
 
-# Raspberry Pi Pico 2 en CDC (pico-sdk, "Console over USB"), famille ttyACM.
-# Le vendeur 2e8a est Raspberry Pi ; le produit est 0009 pour le RP2350 en CDC
-# (000a pour un RP2040). On ne filtre que sur le vendeur : le seul autre
-# peripherique Raspberry Pi possible, le mode BOOTSEL, n'est pas un tty.
-SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", MODE="0660", GROUP="dialout", SYMLINK+="pico"
+# Raspberry Pi Pico 2 en CDC, famille ttyACM. diffdrive_pico_firmware s'annonce
+# avec un descripteur USB dedie (USBD_PRODUCT / USBD_MANUFACTURER dans son
+# CMakeLists.txt) : on filtre dessus, et non sur le vendeur 2e8a commun a
+# toutes les cartes Raspberry Pi. Le firmware releve USBD_DESC_STR_MAX pour
+# que le nom ne soit pas tronque a 19 caracteres, sinon rien ne correspondrait.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{manufacturer}=="MatthieuGrr", ATTRS{product}=="diffdrive_pico_firmware", MODE="0660", GROUP="dialout", SYMLINK+="pico"
 
 # Pour epingler un exemplaire precis, ajouter ATTRS{serial}=="..." lu par :
 #   udevadm info -a -n /dev/ttyACM0 | grep serial

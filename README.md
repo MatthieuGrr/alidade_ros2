@@ -62,7 +62,9 @@ source ~/alidade_ws/src/alidade_ros2/system/env/alidade_env.sh
 ```
 
 Se déconnecter et se reconnecter (groupe `dialout`), brancher le LiDAR et le
-Pico, vérifier `ls -l /dev/rplidar /dev/pico`.
+Pico, vérifier `ls -l /dev/rplidar /dev/pico`. La règle udev du Pico
+reconnaît le descripteur USB `diffdrive_pico_firmware` que le firmware
+annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
 
 ### Première mise en route, étage par étage
 
