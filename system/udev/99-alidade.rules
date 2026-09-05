@@ -1,0 +1,17 @@
+# Peripheriques USB d'Alidade : noms stables, independants de l'ordre de
+# branchement, et droits au groupe dialout pour ne pas lancer ROS en root.
+#
+# Installer : sudo cp 99-alidade.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger
+# Verifier  : ls -l /dev/rplidar /dev/pico ; lsusb pour les identifiants.
+
+# RPLIDAR C1 : pont serie CP210x (Silicon Labs), famille ttyUSB.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", MODE="0660", GROUP="dialout", SYMLINK+="rplidar"
+
+# Raspberry Pi Pico 2 en CDC (pico-sdk, "Console over USB"), famille ttyACM.
+# Le vendeur 2e8a est Raspberry Pi ; le produit est 0009 pour le RP2350 en CDC
+# (000a pour un RP2040). On ne filtre que sur le vendeur : le seul autre
+# peripherique Raspberry Pi possible, le mode BOOTSEL, n'est pas un tty.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", MODE="0660", GROUP="dialout", SYMLINK+="pico"
+
+# Pour epingler un exemplaire precis, ajouter ATTRS{serial}=="..." lu par :
+#   udevadm info -a -n /dev/ttyACM0 | grep serial

@@ -1,0 +1,30 @@
+# Service de la pile ROS 2 d'Alidade. Installe par system/install.sh, qui
+# remplace @USER@ et @WORKSPACE@.
+#
+#   sudo systemctl enable --now alidade     # au boot
+#   sudo systemctl stop alidade             # pour lancer a la main
+#   journalctl -u alidade -f                # journaux
+#
+# Les arguments de launch (ex. nav:=true) se reglent dans /etc/default/alidade.
+[Unit]
+Description=Alidade - pile ROS 2 (ros2_control, LiDAR, SLAM, navigation)
+After=network-online.target dev-pico.device dev-rplidar.device
+Wants=network-online.target
+# Sans le Pico ou le LiDAR, inutile de demarrer ; s'ils sont debranches, on s'arrete.
+BindsTo=dev-pico.device dev-rplidar.device
+
+[Service]
+Type=simple
+User=@USER@
+EnvironmentFile=-/etc/default/alidade
+WorkingDirectory=@WORKSPACE@
+ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source @WORKSPACE@/install/setup.bash && source @WORKSPACE@/src/alidade_ros2/system/env/alidade_env.sh && exec ros2 launch alidade_bringup robot.launch.py $ALIDADE_LAUNCH_ARGS'
+# ros2 launch arrete proprement ses noeuds sur SIGINT ; le Pico coupe de
+# toute facon ses moteurs 300 ms apres la derniere commande.
+KillSignal=SIGINT
+TimeoutStopSec=20
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

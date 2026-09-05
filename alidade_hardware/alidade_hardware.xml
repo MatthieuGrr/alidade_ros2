@@ -1,0 +1,7 @@
+<library path="alidade_hardware">
+  <class name="alidade_hardware/PicoSystem"
+         type="alidade_hardware::PicoSystem"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>Interface ros2_control vers diffdrive_pico_firmware (Raspberry Pi Pico 2, USB CDC).</description>
+  </class>
+</library>

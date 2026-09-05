@@ -1,0 +1,79 @@
+<?xml version="1.0"?>
+<!--
+  Bloc ros2_control d'Alidade. Les interfaces sont identiques sur les trois
+  cibles ; seul le plugin materiel change :
+
+    real            alidade_hardware/PicoSystem, via le port serie du Pico
+    real + mock     mock_components/GenericSystem, sans materiel
+    sim             gz_ros2_control/GazeboSimSystem
+
+  diff_drive_controller lit position et velocity, commande velocity.
+  imu_sensor_broadcaster lit le capteur 'imu' ; le firmware ne fournit pas
+  d'orientation, le broadcaster le signale par une covariance a -1.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="alidade_ros2_control" params="hw target use_mock pico_port">
+
+    <xacro:property name="kin" value="${hw['kinematics']}"/>
+    <xacro:property name="motor" value="${hw['motor']}"/>
+    <xacro:property name="imu" value="${hw['imu']}"/>
+    <xacro:property name="pico" value="${hw['pico']}"/>
+    <!-- Vitesse de roue maximale en rad/s : derivee du regime moteur nominal,
+         c'est la borne dure au-dessus de laquelle une consigne n'a pas de sens. -->
+    <xacro:property name="wheel_max_rad_s" value="${motor['rated_rpm'] * 2 * pi / 60}"/>
+
+    <ros2_control name="AlidadeSystem" type="system">
+      <hardware>
+        <xacro:if value="${target == 'sim'}">
+          <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+        </xacro:if>
+        <xacro:if value="${target == 'real' and use_mock}">
+          <plugin>mock_components/GenericSystem</plugin>
+          <!-- Integre la vitesse en position : l'odometrie bouge en mock. -->
+          <param name="calculate_dynamics">true</param>
+        </xacro:if>
+        <xacro:if value="${target == 'real' and not use_mock}">
+          <plugin>alidade_hardware/PicoSystem</plugin>
+          <param name="port">${pico_port}</param>
+          <param name="counts_per_rev">${kin['counts_per_rev']}</param>
+          <param name="wheel_max_rad_s">${wheel_max_rad_s}</param>
+          <param name="frame_rate_hz">${pico['frame_rate_hz']}</param>
+          <param name="watchdog_ms">${pico['watchdog_ms']}</param>
+          <param name="accel_lsb_per_m_s2">${imu['accel_lsb_per_m_s2']}</param>
+          <param name="gyro_lsb_per_deg_s">${imu['gyro_lsb_per_deg_s']}</param>
+        </xacro:if>
+      </hardware>
+
+      <xacro:macro name="wheel" params="name">
+        <joint name="${name}">
+          <command_interface name="velocity">
+            <param name="min">${-wheel_max_rad_s}</param>
+            <param name="max">${wheel_max_rad_s}</param>
+          </command_interface>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+        </joint>
+      </xacro:macro>
+      <xacro:wheel name="wheel_left_joint"/>
+      <xacro:wheel name="wheel_right_joint"/>
+
+      <!-- Le nom 'imu' doit etre celui du capteur Gazebo en simulation :
+           gz_ros2_control apparie les deux par le nom. -->
+      <sensor name="imu">
+        <state_interface name="orientation.x"/>
+        <state_interface name="orientation.y"/>
+        <state_interface name="orientation.z"/>
+        <state_interface name="orientation.w"/>
+        <state_interface name="angular_velocity.x"/>
+        <state_interface name="angular_velocity.y"/>
+        <state_interface name="angular_velocity.z"/>
+        <state_interface name="linear_acceleration.x"/>
+        <state_interface name="linear_acceleration.y"/>
+        <state_interface name="linear_acceleration.z"/>
+        <param name="frame_id">${imu['frame']}</param>
+      </sensor>
+    </ros2_control>
+
+  </xacro:macro>
+</robot>

@@ -1,0 +1,213 @@
+# Navigation nav2, dimensionnee pour un robot de 21 x 22 cm.
+#
+# Les valeurs par defaut de nav2 visent des robots d'un metre : rayons
+# d'inflation, tolerances et vitesses sont ici divises d'autant. Gabarit rendu
+# au lancement ; le rayon et les vitesses viennent de la revision materielle.
+#
+# robot_base_frame est base_footprint, pas base_link : base_link est pose sur
+# la platine 38 mm en arriere de l'axe des roues, et mesuree depuis lui
+# l'empreinte deborde du cercle de collision. base_footprint est au centre
+# instantane de rotation, la bonne reference pour un differentiel.
+#
+# Pas de map_server ni d'amcl : slam_toolbox fournit map -> odom.
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    global_frame: map
+    robot_base_frame: base_footprint
+    odom_topic: /diff_drive_controller/odom
+    bt_loop_duration: 10
+    default_server_timeout: 20
+
+controller_server:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    controller_frequency: 20.0
+    odom_topic: /diff_drive_controller/odom
+    min_x_velocity_threshold: 0.001
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+
+    progress_checker_plugins: ["progress_checker"]
+    goal_checker_plugins: ["goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.3
+      movement_time_allowance: 15.0
+
+    goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.12
+      yaw_goal_tolerance: 0.20
+      stateful: true
+
+    # Pure pursuit regule : plus stable qu'un DWB sur un differentiel court,
+    # et sans la foret de poids a regler.
+    FollowPath:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      desired_linear_vel: 0.25
+      lookahead_dist: 0.4
+      min_lookahead_dist: 0.2
+      max_lookahead_dist: 0.6
+      lookahead_time: 1.5
+      use_velocity_scaled_lookahead_dist: true
+      transform_tolerance: 0.2
+      min_approach_linear_velocity: 0.05
+      approach_velocity_scaling_dist: 0.4
+      use_regulated_linear_velocity_scaling: true
+      use_cost_regulated_linear_velocity_scaling: false
+      regulated_linear_scaling_min_radius: 0.4
+      regulated_linear_scaling_min_speed: 0.10
+      use_rotate_to_heading: true
+      rotate_to_heading_min_angle: 0.6
+      rotate_to_heading_angular_vel: 1.0
+      max_angular_accel: ${motor.max_angular_acceleration}
+      max_robot_pose_search_dist: 5.0
+
+planner_server:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    expected_planner_frequency: 5.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_navfn_planner::NavfnPlanner"
+      tolerance: 0.15
+      use_astar: true
+      allow_unknown: true
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    local_frame: odom
+    global_frame: map
+    robot_base_frame: base_footprint
+    transform_tolerance: 0.2
+    cycle_frequency: 10.0
+    behavior_plugins: ["spin", "backup", "wait"]
+    spin:
+      plugin: "nav2_behaviors::Spin"
+    backup:
+      plugin: "nav2_behaviors::BackUp"
+    wait:
+      plugin: "nav2_behaviors::Wait"
+    max_rotational_vel: 1.2
+    min_rotational_vel: 0.3
+    rotational_acc_lim: ${motor.max_angular_acceleration}
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    smoothing_frequency: 20.0
+    scale_velocities: false
+    feedback: "OPEN_LOOP"
+    max_velocity: [${motor.max_linear_velocity}, 0.0, ${motor.max_angular_velocity}]
+    min_velocity: [-0.20, 0.0, -${motor.max_angular_velocity}]
+    max_accel: [${motor.max_linear_acceleration}, 0.0, ${motor.max_angular_acceleration}]
+    max_decel: [-1.5, 0.0, -${motor.max_angular_acceleration}]
+    odom_topic: /diff_drive_controller/odom
+    odom_duration: 0.1
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: ${use_sim_time}
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_footprint
+      rolling_window: true
+      width: 3
+      height: 3
+      resolution: 0.05
+      robot_radius: ${footprint.robot_radius}
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          data_type: "LaserScan"
+          raytrace_max_range: ${lidar.range_max}
+          raytrace_min_range: 0.0
+          obstacle_max_range: 6.0
+          obstacle_min_range: 0.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        # Une salle de 6 m avec un robot de 21 cm : au-dela de 0.35 m
+        # d'inflation, les passages entre obstacles se ferment tout seuls.
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.35
+      always_send_full_costmap: true
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: ${use_sim_time}
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_footprint
+      resolution: 0.05
+      robot_radius: ${footprint.robot_radius}
+      track_unknown_space: true
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: true
+        subscribe_to_updates: true
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          data_type: "LaserScan"
+          raytrace_max_range: ${lidar.range_max}
+          raytrace_min_range: 0.0
+          obstacle_max_range: 6.0
+          obstacle_min_range: 0.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.35
+      always_send_full_costmap: true
+
+# Dernier maillon avant le robot : coupe les commandes si un obstacle entre
+# dans la zone d'arret. Sans section observation_sources il refuse de se
+# configurer et fait echouer tout le bringup.
+collision_monitor:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    base_frame_id: "base_footprint"
+    odom_frame_id: "odom"
+    cmd_vel_in_topic: "cmd_vel_smoothed"
+    cmd_vel_out_topic: "cmd_vel"
+    state_topic: "collision_monitor_state"
+    transform_tolerance: 0.2
+    source_timeout: 1.0
+    base_shift_correction: true
+    stop_pub_timeout: 2.0
+    polygons: ["PolygonStop"]
+    PolygonStop:
+      type: "circle"
+      # Rayon circonscrit plus une marge : en deca, le robot s'arrete.
+      radius: 0.22
+      action_type: "stop"
+      min_points: 4
+      visualize: true
+      polygon_pub_topic: "polygon_stop"
+    observation_sources: ["scan"]
+    scan:
+      type: "scan"
+      topic: "scan"
+      enabled: true

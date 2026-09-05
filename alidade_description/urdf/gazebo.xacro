@@ -1,0 +1,92 @@
+<?xml version="1.0"?>
+<!--
+  Ce qui n'existe qu'en simulation : capteurs Gazebo, frictions et plugin
+  gz_ros2_control. Sur le robot reel, le LiDAR et l'IMU sont de vrais
+  peripheriques, et ces balises n'auraient aucun sens.
+
+  Le monde doit embarquer gz-sim-sensors-system et gz-sim-imu-system, sinon les
+  capteurs restent muets sans le moindre message : c'est le cas de empty.sdf,
+  d'ou alidade_sim/worlds/arena.sdf.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="alidade_gazebo" params="hw controllers_file">
+
+    <xacro:property name="lidar" value="${hw['lidar']}"/>
+    <xacro:property name="imu" value="${hw['imu']}"/>
+    <xacro:property name="pico" value="${hw['pico']}"/>
+
+    <!-- Frictions, lues par sdformat a la conversion URDF -> SDF. Elevees sur
+         les roues pour qu'elles accrochent, quasi nulles sur la bille. -->
+    <xacro:macro name="friction" params="name spec">
+      <xacro:if value="${'mu' in spec}">
+        <gazebo reference="${name}">
+          <mu1>${spec['mu']}</mu1>
+          <mu2>${spec['mu']}</mu2>
+        </gazebo>
+      </xacro:if>
+    </xacro:macro>
+    <xacro:macro name="frictions" params="items">
+      <xacro:if value="${items}">
+        <xacro:property name="item" value="${items[0]}"/>
+        <xacro:friction name="${item[0]}" spec="${item[1]}"/>
+        <xacro:frictions items="${items[1:]}"/>
+      </xacro:if>
+    </xacro:macro>
+    <xacro:frictions items="${list(hw['collisions'].items())}"/>
+
+    <!-- RPLIDAR C1 simule aux valeurs de la datasheet. gz_frame_id fait
+         atterrir le scan dans le repere du modele : sans lui, le frame_id ne
+         correspond a aucun repere de la TF. -->
+    <gazebo reference="${lidar['frame']}">
+      <sensor name="${lidar['frame']}_sensor" type="gpu_lidar">
+        <topic>scan</topic>
+        <update_rate>${lidar['rotation_hz']}</update_rate>
+        <always_on>1</always_on>
+        <visualize>true</visualize>
+        <gz_frame_id>${lidar['frame']}</gz_frame_id>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>${lidar['samples_per_rev']}</samples>
+              <resolution>1</resolution>
+              <min_angle>${-pi}</min_angle>
+              <max_angle>${pi}</max_angle>
+            </horizontal>
+          </scan>
+          <range>
+            <min>${lidar['range_min']}</min>
+            <max>${lidar['range_max']}</max>
+            <resolution>${lidar['range_resolution']}</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>${lidar['noise_stddev']}</stddev>
+          </noise>
+        </lidar>
+      </sensor>
+    </gazebo>
+
+    <!-- IMU simulee, lue par gz_ros2_control sous le nom 'imu' et publiee par
+         le meme imu_sensor_broadcaster que sur le robot reel. -->
+    <gazebo reference="${imu['frame']}">
+      <sensor name="imu" type="imu">
+        <topic>imu</topic>
+        <update_rate>${pico['frame_rate_hz']}</update_rate>
+        <always_on>1</always_on>
+        <visualize>false</visualize>
+        <gz_frame_id>${imu['frame']}</gz_frame_id>
+      </sensor>
+    </gazebo>
+
+    <gazebo>
+      <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+        <xacro:if value="${controllers_file != ''}">
+          <parameters>${controllers_file}</parameters>
+        </xacro:if>
+      </plugin>
+    </gazebo>
+
+  </xacro:macro>
+</robot>

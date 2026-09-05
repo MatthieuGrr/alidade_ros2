@@ -1,0 +1,97 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /Global Options1
+        - /TF1
+        - /TF1/Frames1
+      Splitter Ratio: 0.5
+    Tree Height: 700
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 0.05
+      Plane Cell Count: 20
+      Color: 160; 160; 164
+      Alpha: 0.4
+      Line Style:
+        Line Width: 0.0299999993
+        Value: Lines
+      Normal Cell Count: 0
+      Offset: {X: 0, Y: 0, Z: 0}
+      Plane: XY
+      Reference Frame: <Fixed Frame>
+    - Class: rviz_default_plugins/RobotModel
+      Name: RobotModel
+      Enabled: true
+      Description Source: Topic
+      Description Topic:
+        Value: /robot_description
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Alpha: 1
+      Collision Enabled: false
+      Visual Enabled: true
+      Update Interval: 0
+      Mass Properties: {Inertia: false, Mass: false}
+      TF Prefix: ""
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+      Marker Scale: 0.15
+      Show Arrows: true
+      Show Axes: true
+      Show Names: true
+      Update Interval: 0
+      Frame Timeout: 15
+      Filter (blacklist): ""
+      Filter (whitelist): ""
+      Tree: {}
+    - Class: rviz_default_plugins/Axes
+      Name: Axes (repere fixe)
+      Enabled: true
+      Length: 0.2
+      Radius: 0.004
+      Reference Frame: <Fixed Frame>
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: base_footprint
+    Frame Rate: 30
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+      Line color: 128; 128; 0
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: Current View
+      Distance: 0.75
+      Focal Point: {X: 0.03, Y: 0, Z: 0.09}
+      Pitch: 0.42
+      Yaw: 5.5
+      Near Clip Distance: 0.01
+      Target Frame: <Fixed Frame>
+      Invert Z Axis: false
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.0599999987
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+    Saved: ~
+Window Geometry:
+  Displays: {collapsed: false}
+  Views: {collapsed: false}
+  Height: 900
+  Width: 1500
+  QMainWindow State: ""

@@ -1,0 +1,126 @@
+<?xml version="1.0" ?>
+<!--
+  Salle fermee de 6 x 6 m avec quelques obstacles, pour donner de la matiere au
+  LiDAR et au SLAM. Un monde vide ne produirait aucune carte.
+
+  Les systemes 'sensors' et 'imu' sont indispensables : empty.sdf ne les
+  embarque pas, et sans eux le gpu_lidar et l'IMU restent muets, sans le
+  moindre message d'erreur.
+-->
+<sdf version="1.8">
+  <world name="arena">
+
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <plugin filename="gz-sim-physics-system"
+            name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system"
+            name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system"
+            name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-contact-system"
+            name="gz::sim::systems::Contact"/>
+    <plugin filename="gz-sim-imu-system"
+            name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-sensors-system"
+            name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>100 100</size></plane></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>100 100</size></plane></geometry>
+          <material>
+            <ambient>0.8 0.8 0.8 1</ambient>
+            <diffuse>0.8 0.8 0.8 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="walls">
+      <static>true</static>
+
+      <link name="north">
+        <pose>0 3 0.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>6.2 0.2 1</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>6.2 0.2 1</size></box></geometry>
+          <material><ambient>0.4 0.45 0.5 1</ambient><diffuse>0.4 0.45 0.5 1</diffuse></material>
+        </visual>
+      </link>
+
+      <link name="south">
+        <pose>0 -3 0.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>6.2 0.2 1</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>6.2 0.2 1</size></box></geometry>
+          <material><ambient>0.4 0.45 0.5 1</ambient><diffuse>0.4 0.45 0.5 1</diffuse></material>
+        </visual>
+      </link>
+
+      <link name="east">
+        <pose>3 0 0.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 6.2 1</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 6.2 1</size></box></geometry>
+          <material><ambient>0.4 0.45 0.5 1</ambient><diffuse>0.4 0.45 0.5 1</diffuse></material>
+        </visual>
+      </link>
+
+      <link name="west">
+        <pose>-3 0 0.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 6.2 1</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 6.2 1</size></box></geometry>
+          <material><ambient>0.4 0.45 0.5 1</ambient><diffuse>0.4 0.45 0.5 1</diffuse></material>
+        </visual>
+      </link>
+
+      <!-- Refend interieur : casse la symetrie de la salle, sans quoi le SLAM
+           peine a lever l'ambiguite entre les quatre orientations. -->
+      <link name="divider">
+        <pose>0.6 1.2 0.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 2.4 1</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 2.4 1</size></box></geometry>
+          <material><ambient>0.45 0.4 0.35 1</ambient><diffuse>0.45 0.4 0.35 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="pillar_a">
+      <static>true</static>
+      <pose>-1.4 -1.1 0.3 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><cylinder><radius>0.18</radius><length>0.6</length></cylinder></geometry></collision>
+        <visual name="v"><geometry><cylinder><radius>0.18</radius><length>0.6</length></cylinder></geometry>
+          <material><ambient>0.55 0.35 0.3 1</ambient><diffuse>0.55 0.35 0.3 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="crate">
+      <static>true</static>
+      <pose>1.7 -1.6 0.2 0 0 0.4</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>0.5 0.4 0.4</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.5 0.4 0.4</size></box></geometry>
+          <material><ambient>0.35 0.45 0.35 1</ambient><diffuse>0.35 0.45 0.35 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+  </world>
+</sdf>

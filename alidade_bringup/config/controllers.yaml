@@ -1,0 +1,61 @@
+# Controleurs ros2_control, communs au robot reel et a la simulation.
+#
+# Gabarit : chaque marqueur (dollar, accolades, cle pointee) est rempli au lancement depuis la revision
+# materielle (alidade_description/config/alidade_<rev>.yaml). Ne pas y
+# recopier de valeur physique.
+
+controller_manager:
+  ros__parameters:
+    # Cale sur la cadence des trames du Pico : un cycle par trame, ni plus
+    # (deltas de position nuls un cycle sur deux) ni moins.
+    update_rate: ${pico.frame_rate_hz}
+    use_sim_time: ${use_sim_time}
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    diff_drive_controller:
+      type: diff_drive_controller/DiffDriveController
+    imu_sensor_broadcaster:
+      type: imu_sensor_broadcaster/IMUSensorBroadcaster
+
+diff_drive_controller:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    left_wheel_names: ["wheel_left_joint"]
+    right_wheel_names: ["wheel_right_joint"]
+
+    wheel_separation: ${kinematics.wheel_separation}
+    wheel_radius: ${kinematics.wheel_radius}
+
+    base_frame_id: base_footprint
+    odom_frame_id: odom
+    publish_rate: 50.0
+    enable_odom_tf: true
+    open_loop: false
+    position_feedback: true
+    velocity_rolling_window_size: 5
+    # Au-dela, sans nouvelle consigne, le controleur envoie zero : le Pico
+    # reçoit donc toujours des trames et son chien de garde ne tombe pas.
+    cmd_vel_timeout: 0.5
+
+    # Le firmware n'applique aucune limite : c'est ici, cote Pi, qu'elles
+    # vivent. Une limite en NaN est desactivee.
+    linear.x.max_velocity: ${motor.max_linear_velocity}
+    linear.x.min_velocity: -${motor.max_linear_velocity}
+    linear.x.max_acceleration: ${motor.max_linear_acceleration}
+    linear.x.max_deceleration: -${motor.max_linear_acceleration}
+    angular.z.max_velocity: ${motor.max_angular_velocity}
+    angular.z.min_velocity: -${motor.max_angular_velocity}
+    angular.z.max_acceleration: ${motor.max_angular_acceleration}
+    angular.z.max_deceleration: -${motor.max_angular_acceleration}
+
+imu_sensor_broadcaster:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    sensor_name: imu
+    frame_id: ${imu.frame}
+    # Le BNO055 est lu en brut (gyroscope + accelerometre), sans orientation :
+    # -1 en premiere case signale « pas d'estimation » selon sensor_msgs/Imu.
+    static_covariance_orientation: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    static_covariance_angular_velocity: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    static_covariance_linear_acceleration: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]

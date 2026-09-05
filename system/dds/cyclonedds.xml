@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CycloneDDS pour Alidade, multi-machines en WiFi.
+
+  Pourquoi CycloneDDS avec des pairs declares plutot que le Discovery Server
+  de FastDDS : pas de processus serveur a maintenir ni a demarrer avant les
+  autres, configuration symetrique entre le robot et le poste, et les outils
+  `ros2 topic` fonctionnent sans variable ROS_SUPER_CLIENT. Le prix : chaque
+  machine doit connaitre l'adresse de l'autre, d'ou les deux variables
+  d'environnement de env/alidade_env.sh.
+
+  Le multicast est coupe : en WiFi, la decouverte SPDP multicast est perdue
+  ou filtree par beaucoup de points d'acces, et les noeuds se voient un coup
+  sur deux. Sans multicast, Cyclone sonde en unicast les pairs declares et sa
+  propre adresse sur la plage d'index de participants ; cette plage doit
+  couvrir tous les processus ROS d'une machine (une vingtaine avec nav2).
+-->
+<CycloneDDS xmlns="https://cdds.io/config" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
+  <Domain Id="any">
+    <General>
+      <AllowMulticast>false</AllowMulticast>
+      <!-- Pour forcer l'interface WiFi si Cyclone en choisit une autre (docker0, VPN) :
+           <Interfaces><NetworkInterface name="wlan0"/></Interfaces> -->
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <MaxAutoParticipantIndex>60</MaxAutoParticipantIndex>
+      <Peers>
+        <Peer Address="${ALIDADE_ROBOT_HOST}"/>
+        <Peer Address="${ALIDADE_DEV_HOST}"/>
+      </Peers>
+    </Discovery>
+  </Domain>
+</CycloneDDS>

@@ -1,0 +1,17 @@
+# RPLIDAR C1 via rplidar_ros (paquet apt ros-jazzy-rplidar-ros).
+# Gabarit rendu au lancement.
+rplidar:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    channel_type: serial
+    serial_port: /dev/rplidar
+    serial_baudrate: ${lidar.serial_baudrate}
+    frame_id: ${lidar.frame}
+    inverted: false
+    flip_x_axis: false
+    auto_standby: false
+    # Reechantillonne chaque tour a un nombre de points fixe (360 a 1 deg).
+    # Sans cela le nombre de points varie d'un tour a l'autre (≈ 500 ± 5) et
+    # slam_toolbox rejette les scans dont la taille change : « LaserRangeScan
+    # contains N range readings, expected M ». A verifier sur le materiel.
+    angle_compensate: true

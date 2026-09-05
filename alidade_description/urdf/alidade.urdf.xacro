@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<!--
+  Point d'entree de la description d'Alidade.
+
+  La geometrie vient de l'export Onshape, corrige au build par
+  scripts/fix_urdf.py en urdf/generated/alidade_<revision>.urdf. Ce xacro y
+  ajoute ce qui depend de la cible : le bloc ros2_control et, en simulation,
+  les capteurs et le plugin Gazebo. Toutes les constantes physiques sont lues
+  dans config/alidade_<revision>.yaml, jamais recopiees ici.
+
+  Arguments :
+    hardware_revision   v1 (defaut) : selectionne le YAML de revision
+    target              real (defaut) | sim
+    use_mock_hardware   true pour tester sans Pico (mock_components)
+    pico_port           port serie du Pico, /dev/pico par defaut
+    controllers_file    sim uniquement : YAML de controleurs passe au plugin gz_ros2_control
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="alidade">
+
+  <xacro:arg name="hardware_revision" default="v1"/>
+  <xacro:arg name="target" default="real"/>
+  <xacro:arg name="use_mock_hardware" default="false"/>
+  <xacro:arg name="pico_port" default="/dev/pico"/>
+  <xacro:arg name="controllers_file" default=""/>
+
+  <xacro:property name="revision" value="$(arg hardware_revision)"/>
+  <xacro:property name="target" value="$(arg target)"/>
+  <xacro:property name="use_mock" value="$(arg use_mock_hardware)"/>
+  <xacro:property name="hw" value="${xacro.load_yaml('$(find alidade_description)/config/alidade_' + revision + '.yaml')}"/>
+
+  <xacro:if value="${target not in ['real', 'sim']}">
+    ${xacro.fatal("target doit valoir real ou sim, pas '" + target + "'")}
+  </xacro:if>
+
+  <!-- Geometrie, masses et collisions : export Onshape corrige. -->
+  <xacro:include filename="$(find alidade_description)/urdf/generated/alidade_${revision}.urdf"/>
+
+  <xacro:include filename="$(find alidade_description)/urdf/ros2_control.xacro"/>
+  <xacro:alidade_ros2_control hw="${hw}" target="${target}" use_mock="${use_mock}" pico_port="$(arg pico_port)"/>
+
+  <xacro:if value="${target == 'sim'}">
+    <xacro:include filename="$(find alidade_description)/urdf/gazebo.xacro"/>
+    <xacro:alidade_gazebo hw="${hw}" controllers_file="$(arg controllers_file)"/>
+  </xacro:if>
+
+</robot>
