@@ -106,6 +106,44 @@ def rotation(rpy: list[float]) -> list[list[float]]:
     ]
 
 
+def rpy_from_rotation(rot: list[list[float]]) -> list[float]:
+    """Inverse de rotation() : rpy URDF (Rz.Ry.Rx) depuis la matrice."""
+    sp = max(-1.0, min(1.0, -rot[2][0]))
+    pitch = math.asin(sp)
+    if abs(sp) > 1.0 - 1e-9:  # gimbal lock : roulis et lacet ne sont plus separables
+        return [0.0, pitch, math.atan2(-rot[0][1], rot[1][1])]
+    return [
+        math.atan2(rot[2][1], rot[2][2]),
+        pitch,
+        math.atan2(rot[1][0], rot[0][0]),
+    ]
+
+
+def rotate_frame(robot: ET.Element, child: str, extra: list[float]) -> str:
+    """Compose une rotation dans le repere d'un link, sur le joint qui le porte.
+
+    L'export decrit ou la CAO pose un capteur, jamais l'orientation du repere
+    dans lequel il mesure. Quand les deux different -- le 0 d'un lidar qui ne
+    tombe pas du cote suppose -- c'est ici qu'on les reconcilie. La rotation est
+    appliquee a droite, donc exprimee dans le repere de l'enfant, et laisse la
+    position du joint intacte : les poses verifiees par check_frames ne bougent
+    pas."""
+    for joint in robot.findall("joint"):
+        if joint.find("child").get("link") != child:
+            continue
+        origin = joint.find("origin")
+        base = rotation([float(v) for v in origin.get("rpy").split()])
+        turn = rotation(extra)
+        composed = [
+            [sum(base[i][k] * turn[k][j] for k in range(3)) for j in range(3)]
+            for i in range(3)
+        ]
+        rpy = rpy_from_rotation(composed)
+        origin.set("rpy", " ".join(f"{v:.17g}" for v in rpy))
+        return joint.get("name")
+    raise SystemExit(f"aucun joint ne porte le link '{child}'")
+
+
 class Tree:
     """Poses des links dans le repere racine, calculees depuis les joints."""
 
@@ -249,7 +287,16 @@ def main() -> int:
         )
     print("aucun nom partage entre links et joints")
 
-    print(f"maillages   {rewrite_mesh_uris(robot, args.package)} URI ramenees a package://{args.package}/\n")
+    print(f"maillages   {rewrite_mesh_uris(robot, args.package)} URI ramenees a package://{args.package}/")
+
+    # Avant Tree() : l'arbre sert ensuite au centre de masse et a check_frames.
+    lidar = config.get("lidar") or {}
+    mount_rpy = lidar.get("mount_rpy")
+    if mount_rpy:
+        joint = rotate_frame(robot, lidar["frame"], [float(v) for v in mount_rpy])
+        degres = ", ".join(f"{math.degrees(float(v)):+.1f}" for v in mount_rpy)
+        print(f"repere      {lidar['frame']} tourne de ({degres}) deg sur {joint}")
+    print()
 
     links = {link.get("name"): link for link in robot.findall("link")}
     masses = config.get("masses", {})

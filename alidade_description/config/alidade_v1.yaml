@@ -126,11 +126,21 @@ collisions:
 # Capteurs.
 
 # RPLIDAR C1 (C1M1-R2), datasheet Slamtec v1.0. Mesure depuis le centre du
-# rotor, 0° physique vers l'avant : le repère est sur l'axe, rpy nul.
+# rotor : le repère est sur l'axe, la position vient donc de l'export.
 # La datasheet définit un repère gaucher (angle croissant en sens horaire) ;
-# rplidar_ros convertit vers la convention ROS, rien à corriger.
+# rplidar_ros convertit vers la convention ROS, rien à corriger de ce côté.
 lidar:
   frame: laser
+  # Orientation du repère de MESURE, que la CAO ne connaît pas : elle place le
+  # capteur, mais ne dit pas où tombe son 0°. Sur cet exemplaire il pointe vers
+  # l'arrière du robot, à l'opposé de ce qu'on avait supposé.
+  #
+  # MESURÉ au banc, robot immobile : objet posé à 30 cm en arrière-gauche, donc
+  # attendu à +135°, rapporté par le capteur à -45°. Un demi-tour franc, et une
+  # rotation et non un miroir — un miroir aurait donné -135° (retourné) ou +45°
+  # (balayage inversé). Sans cette correction le SLAM cartographie la pièce à
+  # l'envers et nav2 planifie sur des obstacles fantômes.
+  mount_rpy: [0.0, 0.0, 3.141592653589793]
   rotation_hz: 10            # 8-12 Hz possibles
   samples_per_rev: 500       # 5 kHz / 10 Hz, soit 0.72°
   range_min: 0.05
