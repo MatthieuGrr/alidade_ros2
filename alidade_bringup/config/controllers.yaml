@@ -33,7 +33,13 @@ diff_drive_controller:
     enable_odom_tf: true
     open_loop: false
     position_feedback: true
-    velocity_rolling_window_size: 5
+    # Le twist est derive des positions a 50 Hz : a 0.5 rad/s une roue avance
+    # de 7 ticks par cycle, et le ±1 tick de quantification fait ±11 % sur la
+    # vitesse publiee avec une fenetre de 5 (mesure : 0.42-0.54 rad/s pour
+    # 0.485 de moyenne). La pose n'est pas concernee. A 10, le bruit tombe de
+    # moitie pour 100 ms de retard sur la vitesse seule ; c'est cette vitesse
+    # que le pure pursuit utilise pour dimensionner son point de visee.
+    velocity_rolling_window_size: 10
     # Au-dela, sans nouvelle consigne, le controleur envoie zero : le Pico
     # reçoit donc toujours des trames et son chien de garde ne tombe pas.
     cmd_vel_timeout: 0.5
