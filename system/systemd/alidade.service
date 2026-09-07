@@ -18,6 +18,17 @@ Type=simple
 User=@USER@
 EnvironmentFile=-/etc/default/alidade
 WorkingDirectory=@WORKSPACE@
+# Le Pi 5 est livre sans pile sur sa RTC : au boot l'horloge repart de la
+# derniere heure sauvegardee, puis NTP la recale d'un coup une fois le WiFi
+# monte, en general quelques secondes APRES le lancement de la pile. Un saut de
+# plusieurs heures en plein bringup laisse les noeuds deja crees (controller
+# manager, robot_state_publisher) vivants mais absents du graphe DDS : plus
+# d'odometrie ni de TF, nav2 abandonne. Reproductible des que le robot est
+# reste eteint un moment. On attend donc la synchro, 60 s au plus pour ne pas
+# bloquer un robot sans reseau ; le marqueur est celui que surveille
+# systemd-time-wait-sync. Le remede materiel est une pile ML2020 sur le
+# connecteur BAT du Pi (README, Pieges connus).
+ExecStartPre=-/usr/bin/timeout 60 /bin/sh -c 'until [ -e /run/systemd/timesync/synchronized ]; do sleep 1; done'
 ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source @WORKSPACE@/install/setup.bash && source @WORKSPACE@/src/alidade_ros2/system/env/alidade_env.sh && exec ros2 launch alidade_bringup robot.launch.py $ALIDADE_LAUNCH_ARGS'
 # ros2 launch arrete proprement ses noeuds sur SIGINT ; le Pico coupe de
 # toute facon ses moteurs 300 ms apres la derniere commande.
