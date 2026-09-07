@@ -248,10 +248,40 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   roues.
 - Un `ros2 topic pub --once` vers `/goal_pose` se perd dans la découverte
   DDS : publier en répété, ou cliquer dans rviz.
+- Le Pi 5 est livré sans pile RTC : au boot, l'horloge repart de l'heure du
+  dernier arrêt et NTP la recale d'un coup quelques secondes plus tard, en
+  plein bringup. Les nœuds déjà créés restent vivants mais disparaissent du
+  graphe DDS (plus d'odométrie ni de TF, nav2 abandonne), reproductible dès
+  que le robot est resté éteint un moment. Le service attend la synchro
+  (60 s au plus) ; le vrai remède est une pile ML2020 sur le connecteur BAT
+  et `dtparam=rtc_bbat_vchg=3000000` dans `/boot/firmware/config.txt`.
 - `angle_compensate: true` dans `rplidar.yaml` fixe le nombre de points par
-  tour (360) : `slam_toolbox` rejette les scans dont la taille varie d'un
-  tour à l'autre. À `false`, on retrouve les ~500 points bruts du C1, à
-  vérifier sur le matériel.
+  tour à 360 (1°), vérifié sur le matériel : le pilote rééchantillonne à
+  `int(1e6 / 200 µs / 10 / 360) = 1` × 360 quelle que soit la cadence.
+  `slam_toolbox` rejette les scans dont la taille varie d'un tour à l'autre,
+  donc `false` (≈ 500 points bruts, ± quelques-uns) n'est pas une option. La
+  simulation, elle, produit les 500 points de `samples_per_rev`.
+- `rplidar_ros` échoue au démarrage trois fois sur quatre (« Cannot start
+  scan: '80008002' », timeout du SDK : le pilote lance `startScan` juste
+  après la mise en route du moteur, sans attendre ni réessayer), à froid
+  comme à chaud. Le `respawn` finit par passer, mais le premier scan arrive
+  de 15 s à plus de deux minutes après le lancement (jusqu'à 14 échecs
+  consécutifs observés). L'alimentation est hors de cause : le rail 5 V reste
+  à 4,9 V pendant les tentatives. Conséquence sans garde-fou : la costmap
+  globale de nav2 expire (60 s) en attendant le repère `map`, que
+  `slam_toolbox` ne publie qu'après un premier scan, et le lifecycle manager
+  abandonne tout le bringup sans jamais réessayer. D'où `wait_for_scan.py` :
+  nav2 ne démarre qu'après le premier `/scan`. Ne jamais tuer le pilote sans
+  lui laisser envoyer `Stop` (SIGKILL) : le suivant reste bloqué à la
+  connexion tant que le C1 diffuse.
+- Le BNO055 lâche dès que les moteurs tournent : le firmware du Pico met gyro
+  et accéléromètre à zéro quand la lecture I2C échoue et publie ces zéros
+  comme des mesures. Mesuré : 8 % de trames nulles au repos, puis une rafale
+  de plusieurs centaines d'échecs consécutifs en mouvement, après laquelle le
+  composant est déclaré absent et ne revient pas toujours (bus I2C bloqué).
+  Rien ne consomme `/imu/data_raw` aujourd'hui ; ne pas y brancher de fusion
+  avant d'avoir corrigé le firmware (récupération du bus, drapeau de validité
+  dans la trame S).
 - Gazebo : `empty.sdf` n'embarque ni `gz-sim-sensors-system` ni
   `gz-sim-imu-system` ; `arena.sdf` les déclare. Les roues ont un disque de
   collision de 4 mm, pas la largeur réelle du pneu, sinon l'entraxe

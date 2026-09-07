@@ -10,8 +10,10 @@ rplidar:
     inverted: false
     flip_x_axis: false
     auto_standby: false
-    # Reechantillonne chaque tour a un nombre de points fixe (360 a 1 deg).
-    # Sans cela le nombre de points varie d'un tour a l'autre (≈ 500 ± 5) et
-    # slam_toolbox rejette les scans dont la taille change : « LaserRangeScan
-    # contains N range readings, expected M ». A verifier sur le materiel.
+    # Reechantillonne chaque tour a un nombre de points fixe. Sans cela le
+    # nombre de points varie d'un tour a l'autre (≈ 500 ± 5) et slam_toolbox
+    # rejette les scans dont la taille change : « LaserRangeScan contains N
+    # range readings, expected M ». VERIFIE sur le C1 : 360 points a 1.000°,
+    # le pilote prenant int(1e6 / us_per_sample / 10 / 360) = 1 multiple de
+    # 360 ; les ~500 echantillons bruts (0.72°) ne sont pas conserves.
     angle_compensate: true
