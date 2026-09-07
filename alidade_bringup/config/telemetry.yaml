@@ -1,0 +1,22 @@
+# Supervision systeme et cadences capteurs. Gabarit rendu au lancement : les
+# seuils viennent de la section telemetry de la revision, les cadences
+# attendues de chaque capteur.
+system_monitor:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    period: 1.0
+    temp_warn_c: ${telemetry.temp_warn_c}
+    temp_error_c: ${telemetry.temp_error_c}
+    rail_5v_warn_v: ${telemetry.rail_5v_warn_v}
+    cpu_warn_percent: ${telemetry.cpu_warn_percent}
+    mem_warn_percent: ${telemetry.mem_warn_percent}
+    disk_warn_percent: ${telemetry.disk_warn_percent}
+    wifi_warn_dbm: ${telemetry.wifi_warn_dbm}
+    rate_warn_ratio: ${telemetry.rate_warn_ratio}
+    # "topic|type|cadence attendue (Hz)[|optional]" : un capteur optionnel
+    # absent vaut WARN, pas ERROR (la camera n'est pas vitale, le LiDAR si).
+    watch:
+      - "/scan|sensor_msgs/msg/LaserScan|${lidar.rotation_hz}"
+      - "/camera/image|sensor_msgs/msg/Image|${camera.fps}|optional"
+      - "/imu/data_raw|sensor_msgs/msg/Imu|${pico.frame_rate_hz}"
+      - "/diff_drive_controller/odom|nav_msgs/msg/Odometry|50"

@@ -1,0 +1,44 @@
+# diagnostic_aggregator : regroupe /diagnostics en /diagnostics_agg par
+# sous-systeme. Un groupe prend le pire niveau de ses membres ; un membre
+# muet plus de `timeout` secondes passe STALE. Gabarit rendu au lancement.
+# En Jazzy, remove_prefix est une liste comme startswith/contains/regex : une
+# chaine seule fait avorter le noeud (« expected [string_array] got [string] »).
+diagnostic_aggregator:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    pub_rate: 1.0
+    path: Alidade
+    analyzers:
+      systeme:
+        type: diagnostic_aggregator/GenericAnalyzer
+        path: Systeme
+        # Tout system_monitor sauf les cadences, qui vont dans Capteurs.
+        regex: ['system_monitor: (?!Cadence).*']
+        remove_prefix: ['system_monitor:']
+        timeout: 5.0
+      pico:
+        type: diagnostic_aggregator/GenericAnalyzer
+        path: Pico
+        contains: ['alidade_hardware']
+        remove_prefix: ['alidade_hardware:']
+        timeout: 5.0
+      capteurs:
+        type: diagnostic_aggregator/GenericAnalyzer
+        path: Capteurs
+        startswith: ['system_monitor: Cadence']
+        remove_prefix: ['system_monitor: Cadence']
+        timeout: 5.0
+      controle:
+        type: diagnostic_aggregator/GenericAnalyzer
+        path: Controle
+        # ros2_control publie de lui-meme l'activite du controller_manager,
+        # des controleurs et des composants materiels.
+        contains: ['controller_manager']
+        remove_prefix: ['controller_manager:']
+        timeout: 5.0
+      navigation:
+        type: diagnostic_aggregator/GenericAnalyzer
+        path: Navigation
+        # nav2 : le lifecycle manager publie « Nav2 Health » via diagnostic_updater.
+        contains: ['Nav2', 'lifecycle_manager']
+        timeout: 10.0

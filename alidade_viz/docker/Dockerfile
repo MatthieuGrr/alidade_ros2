@@ -24,6 +24,9 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
       ros-jazzy-image-transport-plugins \
       ros-jazzy-rmw-cyclonedds-cpp \
       ros-jazzy-diagnostic-updater \
+      ros-jazzy-diagnostic-aggregator \
+      ros-jazzy-rqt-robot-monitor \
+      python3-psutil \
       ros-jazzy-teleop-twist-keyboard \
       python3-serial \
       python3-yaml \

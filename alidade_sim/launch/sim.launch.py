@@ -80,6 +80,7 @@ def setup(context):
         # Le controller_manager n'existe qu'une fois le modele instancie dans
         # Gazebo : on enchaine donc les spawners sur la fin du spawn.
         actions.after(spawn, chain),
+        actions.include('telemetry.launch.py', hardware_revision=revision, use_sim_time=use_sim_time),
     ]
     if slam or nav:
         # Le SLAM ne demarre qu'une fois l'odometrie disponible : sans

@@ -46,7 +46,9 @@ def setup(context):
 
     chain, last_spawner = actions.controller_chain(use_sim_time)
 
-    launched = [robot_state_publisher, controller_manager, *chain]
+    launched = [robot_state_publisher, controller_manager, *chain,
+                actions.include('telemetry.launch.py',
+                                hardware_revision=revision, use_sim_time=use_sim_time)]
 
     if lidar:
         launched.append(actions.include('lidar.launch.py',

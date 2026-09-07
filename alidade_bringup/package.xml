@@ -29,6 +29,10 @@
   <exec_depend>image_rotate</exec_depend>
   <exec_depend>image_transport_plugins</exec_depend>
   <exec_depend>rclcpp_components</exec_depend>
+  <exec_depend>diagnostic_msgs</exec_depend>
+  <exec_depend>diagnostic_aggregator</exec_depend>
+  <exec_depend>rosidl_runtime_py</exec_depend>
+  <exec_depend>python3-psutil</exec_depend>
   <exec_depend>slam_toolbox</exec_depend>
   <exec_depend>nav2_controller</exec_depend>
   <exec_depend>nav2_planner</exec_depend>

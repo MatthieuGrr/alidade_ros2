@@ -32,6 +32,8 @@ alidade_ros2/
  │  └ imu_sensor_broadcaster ──/imu/data_raw             │
  │ nav2 (6 nœuds) ──Twist──▶ cmd_vel_stamper ──TwistStamped──▶ diff_drive_controller
  │ usb_cam ──/camera/raw/image──▶ ImageFlipNode ──/camera/image (droite) + camera_info
+ │ system_monitor (Pi, cadences) ─┐
+ │ PicoSystem, nav2 ──/diagnostics─┴─▶ diagnostic_aggregator ──/diagnostics_agg
  └──────────────────────────────────────────────────────┘
 ```
 
@@ -88,6 +90,12 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    ros2 topic hz /camera/image          # 15 Hz, frame_id camera_upright_optical_frame
    ros2 run tf2_ros tf2_echo base_footprint wheel_left_link
    ```
+   L'état d'ensemble est dans `/diagnostics_agg`, regroupé par sous-système
+   (Système, Pico, Capteurs, Navigation) ; sur le poste,
+   `ros2 run rqt_robot_monitor rqt_robot_monitor` l'affiche en arbre. Les
+   seuils (température, rail 5 V, WiFi, cadences) sont dans la section
+   `telemetry` de la révision.
+
    La caméra est montée tête en bas : `/camera/raw/image` est à l'envers
    (repère optique physique), `/camera/image` est remise à l'endroit par
    `ImageFlipNode` et c'est elle qu'on consomme. Sans `/dev/camera`, le

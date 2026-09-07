@@ -211,6 +211,20 @@ imu:
   accel_lsb_per_m_s2: 100
   gyro_lsb_per_deg_s: 16
 
+# Seuils de la supervision (system_monitor.py), en unités du Pi 5. Le SoC
+# commence à se brider vers 85 °C ; 4.8 V est le seuil sous lequel le Pi 5
+# signale lui-même la sous-tension ; -75 dBm est la limite où CycloneDDS en
+# unicast commence à perdre des paquets sur ce WiFi.
+telemetry:
+  temp_warn_c: 75.0
+  temp_error_c: 85.0
+  rail_5v_warn_v: 4.80
+  cpu_warn_percent: 85.0
+  mem_warn_percent: 85.0
+  disk_warn_percent: 85.0
+  wifi_warn_dbm: -75.0
+  rate_warn_ratio: 0.8      # cadence capteur sous 80 % de l'attendu -> WARN, nulle -> ERROR
+
 # Contrat avec diffdrive_pico_firmware : cadence des trames S et délai du
 # chien de garde. L'interface matérielle doit émettre bien plus vite que ce
 # délai, y compris à l'arrêt.

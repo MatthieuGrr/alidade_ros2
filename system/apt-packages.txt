@@ -15,6 +15,9 @@ ros-jazzy-slam-toolbox
 ros-jazzy-navigation2
 ros-jazzy-rmw-cyclonedds-cpp
 ros-jazzy-diagnostic-msgs
+# Supervision : agregateur de diagnostics, mesures systeme
+ros-jazzy-diagnostic-aggregator
+python3-psutil
 ros-jazzy-teleop-twist-keyboard
 ros-jazzy-tf2-tools
 python3-colcon-common-extensions
