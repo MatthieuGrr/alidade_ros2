@@ -68,6 +68,36 @@
       </sensor>
     </gazebo>
 
+    <!-- Camera simulee, droite par construction : elle publie directement dans
+         le repere de l'image remise a l'endroit, sur les topics que le noeud de
+         retournement produit sur le robot reel. Le capteur Gazebo regarde le
+         long de +x de sa pose ; on le place a l'origine du repere optique,
+         qui regarde le long de +x de camera_link. -->
+    <xacro:property name="camera" value="${hw['camera']}"/>
+    <gazebo reference="camera_link">
+      <sensor name="camera" type="camera">
+        <!-- gz publie l'image sur ce topic et le camera_info a cote de lui. -->
+        <topic>camera/image</topic>
+        <update_rate>${camera['fps']}</update_rate>
+        <always_on>1</always_on>
+        <visualize>false</visualize>
+        <gz_frame_id>${camera['upright_frame']}</gz_frame_id>
+        <pose>0.0375 0 -0.0295 0 0 0</pose>
+        <camera>
+          <horizontal_fov>${camera['sim_horizontal_fov']}</horizontal_fov>
+          <image>
+            <width>${camera['width']}</width>
+            <height>${camera['height']}</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.05</near>
+            <far>10.0</far>
+          </clip>
+        </camera>
+      </sensor>
+    </gazebo>
+
     <!-- IMU simulee, lue par gz_ros2_control sous le nom 'imu' et publiee par
          le meme imu_sensor_broadcaster que sur le robot reel. -->
     <gazebo reference="${imu['frame']}">

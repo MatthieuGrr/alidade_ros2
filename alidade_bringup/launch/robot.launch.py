@@ -7,8 +7,9 @@
 
 Ordre de demarrage : robot_state_publisher et controller_manager, puis les
 trois controleurs l'un apres l'autre, puis le SLAM une fois l'odometrie
-disponible, et la navigation une fois le premier scan recu. Le LiDAR demarre
-en parallele, il ne depend de rien -- mais tout le monde depend de lui.
+disponible, et la navigation une fois le premier scan recu. Le LiDAR et la
+camera demarrent en parallele, ils ne dependent de rien -- mais tout le monde
+depend du LiDAR.
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
@@ -23,6 +24,7 @@ def setup(context):
     slam = params.as_bool(context.launch_configurations['slam'])
     nav = params.as_bool(context.launch_configurations['nav'])
     lidar = params.as_bool(context.launch_configurations['lidar'])
+    camera = params.as_bool(context.launch_configurations['camera'])
     use_sim_time = params.as_bool(context.launch_configurations['use_sim_time'])
     pico_port = context.launch_configurations['pico_port']
 
@@ -48,6 +50,10 @@ def setup(context):
 
     if lidar:
         launched.append(actions.include('lidar.launch.py',
+                                        hardware_revision=revision, use_sim_time=use_sim_time))
+    if camera:
+        # Se retire de lui-meme si /dev/camera n'existe pas.
+        launched.append(actions.include('camera.launch.py',
                                         hardware_revision=revision, use_sim_time=use_sim_time))
 
     # nav2 a besoin de map -> odom : activer nav sans slam n'aurait pas de sens.
@@ -75,6 +81,8 @@ def generate_launch_description():
                               description='navigation nav2 (implique slam)'),
         DeclareLaunchArgument('lidar', default_value='true',
                               description='demarre rplidar_ros'),
+        DeclareLaunchArgument('camera', default_value='true',
+                              description='demarre la camera C920 si /dev/camera existe'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('pico_port', default_value='/dev/pico'),
         OpaqueFunction(function=setup),

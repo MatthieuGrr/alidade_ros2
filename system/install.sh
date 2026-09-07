@@ -19,8 +19,8 @@ echo "== paquets apt"
 apt-get update
 grep -vE '^\s*(#|$)' "$HERE/apt-packages.txt" | xargs apt-get install -y --no-install-recommends
 
-echo "== droits serie pour $USER_NAME"
-usermod -aG dialout "$USER_NAME"
+echo "== droits serie et video pour $USER_NAME"
+usermod -aG dialout,video "$USER_NAME"
 
 echo "== regles udev"
 install -m 644 "$HERE/udev/99-alidade.rules" /etc/udev/rules.d/
@@ -44,5 +44,5 @@ systemctl enable alidade
 
 echo
 echo "fait. Rebrancher les peripheriques (ou redemarrer) puis verifier :"
-echo "  ls -l /dev/rplidar /dev/pico"
+echo "  ls -l /dev/rplidar /dev/pico /dev/camera"
 echo "  sudo systemctl start alidade && journalctl -u alidade -f"

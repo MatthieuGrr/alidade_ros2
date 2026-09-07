@@ -31,6 +31,7 @@ alidade_ros2/
  │  ├ joint_state_broadcaster ──/joint_states            │
  │  └ imu_sensor_broadcaster ──/imu/data_raw             │
  │ nav2 (6 nœuds) ──Twist──▶ cmd_vel_stamper ──TwistStamped──▶ diff_drive_controller
+ │ usb_cam ──/camera/raw/image──▶ ImageFlipNode ──/camera/image (droite) + camera_info
  └──────────────────────────────────────────────────────┘
 ```
 
@@ -84,8 +85,25 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    ros2 topic hz /joint_states          # 50 Hz
    ros2 topic hz /scan                  # ~10 Hz, frame_id laser
    ros2 topic echo /imu/data_raw --once # ≈ 9.81 m/s² sur z à l'arrêt
+   ros2 topic hz /camera/image          # 15 Hz, frame_id camera_upright_optical_frame
    ros2 run tf2_ros tf2_echo base_footprint wheel_left_link
    ```
+   La caméra est montée tête en bas : `/camera/raw/image` est à l'envers
+   (repère optique physique), `/camera/image` est remise à l'endroit par
+   `ImageFlipNode` et c'est elle qu'on consomme. Sans `/dev/camera`, le
+   launch le dit et continue sans caméra.
+
+   **Calibration de la caméra**, une fois, sur le flux droit (le nœud de
+   retournement recopie le `camera_info` sans corriger le point principal,
+   donc on calibre ce qu'on consomme), mise au point fixe comme en marche :
+   ```bash
+   ros2 run camera_calibration cameracalibrator --size 8x6 --square 0.025 \
+       --no-service-check image:=/camera/image
+   ```
+   Le YAML produit remplace `alidade_description/config/camera_v1.yaml`
+   (provisoire : focale nominale, sans distorsion) ; reporter ensuite
+   `2·atan(w/2fx)` dans `camera.sim_horizontal_fov` pour que Gazebo voie
+   la même ouverture.
    Puis un mètre au sol :
    ```bash
    ros2 topic pub -r 20 /diff_drive_controller/cmd_vel geometry_msgs/msg/TwistStamped \
@@ -282,6 +300,16 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   Rien ne consomme `/imu/data_raw` aujourd'hui ; ne pas y brancher de fusion
   avant d'avoir corrigé le firmware (récupération du bus, drapeau de validité
   dans la trame S).
+- La C920 expose deux nœuds `video4linux` : la capture (`index` 0) et un flux
+  de métadonnées UVC (`index` 1) qui n'est pas une caméra. La règle udev ne
+  lie `/dev/camera` qu'au premier. Mise au point **fixe** obligatoire : en
+  autofocus la C920 change ses intrinsèques en permanence.
+- `ImageFlipNode` (`rotation_steps: 2`) diffuse lui-même un TF du repère
+  d'entrée vers `output_frame_id`, et ne corrige pas `cx`/`cy`. D'où le
+  montage : le repère CAO `camera_optical_frame` est retourné par `mount_rpy`
+  pour décrire l'image brute, `camera_upright_optical_frame` est déclaré dans
+  l'URDF avec la même rotation (le TF du nœud et celui de l'URDF concordent,
+  pas de double parent), et la calibration se fait sur `/camera/image`.
 - Gazebo : `empty.sdf` n'embarque ni `gz-sim-sensors-system` ni
   `gz-sim-imu-system` ; `arena.sdf` les déclare. Les roues ont un disque de
   collision de 4 mm, pas la largeur réelle du pneu, sinon l'entraxe

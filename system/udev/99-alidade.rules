@@ -14,5 +14,10 @@ SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", MODE="0660"
 # que le nom ne soit pas tronque a 19 caracteres, sinon rien ne correspondrait.
 SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{manufacturer}=="MatthieuGrr", ATTRS{product}=="diffdrive_pico_firmware", MODE="0660", GROUP="dialout", SYMLINK+="pico"
 
+# Logitech C920 HD Pro : deux noeuds video4linux, la capture (index 0) et un
+# flux de metadonnees UVC (index 1) qui n'est pas une camera. Seul le premier
+# recoit le lien. Groupe video, deja celui des /dev/video* sur Ubuntu.
+SUBSYSTEM=="video4linux", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="082d", ATTR{index}=="0", MODE="0660", GROUP="video", SYMLINK+="camera"
+
 # Pour epingler un exemplaire precis, ajouter ATTRS{serial}=="..." lu par :
 #   udevadm info -a -n /dev/ttyACM0 | grep serial

@@ -2,6 +2,7 @@
 
 Lance par colcon test. Necessite xacro et check_urdf (liburdfdom-tools).
 """
+import math
 import os
 import subprocess
 import xml.etree.ElementTree as ET
@@ -57,6 +58,19 @@ def test_frames_and_root():
     assert 'base_footprint' in links and 'root' not in links
     joints = {j.get('name') for j in robot.findall('joint')}
     assert not (links & joints), 'Gazebo refuse les noms partages link/joint'
+
+
+def test_camera_frames():
+    """L'image droite a son repere, enfant du repere optique physique par un
+    demi-tour autour de l'axe optique : la meme transformation que celle que
+    diffuse ImageFlipNode."""
+    cam = REVISION['camera']
+    robot = run_xacro(target='real')
+    parents = {j.find('child').get('link'): j for j in robot.findall('joint')}
+    joint = parents[cam['upright_frame']]
+    assert joint.find('parent').get('link') == cam['frame']
+    rpy = [float(v) for v in joint.find('origin').get('rpy').split()]
+    assert abs(rpy[2] - math.pi) < 1e-6 and abs(rpy[0]) < 1e-6 and abs(rpy[1]) < 1e-6
 
 
 def test_check_urdf():

@@ -19,6 +19,9 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
       ros-jazzy-slam-toolbox \
       ros-jazzy-navigation2 \
       ros-jazzy-rplidar-ros \
+      ros-jazzy-usb-cam \
+      ros-jazzy-image-rotate \
+      ros-jazzy-image-transport-plugins \
       ros-jazzy-rmw-cyclonedds-cpp \
       ros-jazzy-diagnostic-updater \
       ros-jazzy-teleop-twist-keyboard \

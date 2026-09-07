@@ -290,12 +290,14 @@ def main() -> int:
     print(f"maillages   {rewrite_mesh_uris(robot, args.package)} URI ramenees a package://{args.package}/")
 
     # Avant Tree() : l'arbre sert ensuite au centre de masse et a check_frames.
-    lidar = config.get("lidar") or {}
-    mount_rpy = lidar.get("mount_rpy")
-    if mount_rpy:
-        joint = rotate_frame(robot, lidar["frame"], [float(v) for v in mount_rpy])
-        degres = ", ".join(f"{math.degrees(float(v)):+.1f}" for v in mount_rpy)
-        print(f"repere      {lidar['frame']} tourne de ({degres}) deg sur {joint}")
+    # Toute section de capteur portant 'frame' et 'mount_rpy' decrit un montage
+    # qui differe de l'orientation posee par la CAO (lidar, camera...).
+    for section, spec in config.items():
+        if not isinstance(spec, dict) or "mount_rpy" not in spec or "frame" not in spec:
+            continue
+        joint = rotate_frame(robot, spec["frame"], [float(v) for v in spec["mount_rpy"]])
+        degres = ", ".join(f"{math.degrees(float(v)):+.1f}" for v in spec["mount_rpy"])
+        print(f"repere      {spec['frame']} tourne de ({degres}) deg sur {joint}  [{section}]")
     print()
 
     links = {link.get("name"): link for link in robot.findall("link")}

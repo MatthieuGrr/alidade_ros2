@@ -1,0 +1,33 @@
+# Camera C920 : pilote usb_cam puis remise a l'endroit par ImageFlipNode.
+# Gabarit rendu au lancement ; les deux blocs sont passes explicitement a
+# chaque composant par camera.launch.py, le nom de noeud n'a pas a coincider.
+#
+# usb_cam publie l'image brute (a l'envers, repere optique physique) et, sans
+# reencodage, le MJPEG de la camera sur image_raw/compressed. ImageFlipNode
+# tourne l'image de 180 degres et recopie le camera_info tel quel : c'est
+# pourquoi la calibration se fait sur le flux retourne.
+usb_cam:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    video_device: ${camera.device}
+    framerate: ${camera.fps}
+    io_method: mmap
+    frame_id: ${camera.frame}
+    pixel_format: ${camera.pixel_format}
+    av_device_format: YUV422P
+    image_width: ${camera.width}
+    image_height: ${camera.height}
+    camera_name: alidade_c920
+    camera_info_url: package://alidade_description/config/${camera.calibration}
+    autofocus: ${camera.autofocus}
+    focus: ${camera.focus}
+    autoexposure: true
+    auto_white_balance: true
+
+image_flip:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    rotation_steps: 2
+    use_camera_info: true
+    output_frame_id: ${camera.upright_frame}
+    image_transport: raw
