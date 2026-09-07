@@ -18,8 +18,24 @@ onshape_export: onshape/alidade.urdf
 kinematics:
   # Les roues sont à y = ±0.0955 dans le modèle, et le plan médian du pneu
   # coïncide avec l'origine du link à 0.03 mm près : l'entraxe est bien 2 × 0.0955.
-  wheel_separation: 0.1910
-  wheel_radius: 0.0320
+  #
+  #
+  # CALIBRÉ au sol (sept. 2026), le LiDAR servant de référence, ni SLAM ni IMU :
+  #  - rayon : ICP 2D des scans avant/après une ligne de 0.4 m, initialisé par
+  #    l'odométrie (rms ≈ 30 mm, insensible à l'initialisation). Deux sens :
+  #    vrai/odom = 1.016 et 1.019 → rayon de roulement effectif 0.0326 m, le
+  #    pneu chargé roule un peu plus grand que la cote CAO ;
+  #  - entraxe : deux tours complets sur place, le profil de scan doit revenir
+  #    sur lui-même, le décalage résiduel donne l'erreur. Avec r = 0.0320 :
+  #    anti-horaire odom/vrai = 0.990 et 0.995, horaire 0.999 et 1.001. Le
+  #    rapport r/L vrai vaut donc (0.0320/0.1910)/0.9965 ; avec le rayon
+  #    calibré, L = 0.1939 m et les deux sens retombent à ±0.4 % autour de 1.
+  #    L'asymétrie résiduelle entre sens est unilatérale (une roue ou un
+  #    encodeur), ce n'est pas une constante.
+  # La simulation suit : disques de collision au rayon effectif et décalés de
+  # ±1.45 mm pour donner le même entraxe efficace (voir collisions).
+  wheel_separation: 0.1939
+  wheel_radius: 0.0326
   # 11 PPR × 4 (quadrature) × 34:1. MESURÉ sur 10 tours de roue à la main
   # (14 960 ticks) : le réducteur livré est en 34:1 et non 35:1. Se tromper
   # coûte 2.9 % sur les distances et 10° sur un tour complet du robot.
@@ -103,18 +119,24 @@ collisions:
     mu: 0.2
   wheel_left_link:
     shape: cylinder
-    radius: 0.0320
+    # Rayon de roulement calibré (kinematics.wheel_radius), pas la cote CAO :
+    # l'odométrie simulée doit voir la même roue que le contrôleur.
+    radius: 0.0326
     # Disque fin volontairement : le solveur résout le contact cylindre/plan sur
     # un bord du cylindre, pas sous l'axe. Avec la largeur réelle du pneu
     # (26 mm) l'entraxe efficace tombait à 0.1646 m au lieu de 0.1910, soit
     # 13.8 % d'erreur en rotation. À 4 mm, l'erreur retombe à 2.0 %.
     length: 0.004
+    # Décalé vers l'extérieur pour porter l'entraxe simulé à l'entraxe calibré
+    # (kinematics.wheel_separation) alors que la CAO place les roues à ±0.0955.
+    origin: [0.0, 0.00145, 0.0]
     rpy: [1.5708, 0.0, 0.0]   # l'axe d'un cylindre URDF est Z, la roue tourne sur Y
     mu: 1.2
   wheel_right_link:
     shape: cylinder
-    radius: 0.0320
+    radius: 0.0326
     length: 0.004
+    origin: [0.0, -0.00145, 0.0]
     rpy: [1.5708, 0.0, 0.0]
     mu: 1.2
   caster_wheel_link:
