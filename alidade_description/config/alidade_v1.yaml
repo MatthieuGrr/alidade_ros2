@@ -47,10 +47,10 @@ motor:
   rated_rpm: 170           # GA25-370 à 24 V, en sortie de réducteur
   # Vitesses de croisière retenues pour ce robot. Bien en deçà de la pleine
   # échelle (≈ 0.57 m/s à 170 tr/min), ce qui laisse de la marge au PID du Pico.
-  max_linear_velocity: 0.30     # m/s
-  max_angular_velocity: 1.50    # rad/s
+  max_linear_velocity: 0.40     # m/s
+  max_angular_velocity: 2.50    # rad/s
   max_linear_acceleration: 1.0  # m/s²
-  max_angular_acceleration: 2.5 # rad/s²
+  max_angular_acceleration: 3.5 # rad/s²
 
 # ---------------------------------------------------------------------------
 # Empreinte, depuis base_footprint — et surtout pas base_link : posé sur la
