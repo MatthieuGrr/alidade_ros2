@@ -60,6 +60,21 @@ def controller_chain(use_sim_time: bool) -> tuple[list, Node]:
     return actions, spawners[-1]
 
 
+def scan_gate(use_sim_time: bool) -> Node:
+    """Processus qui se termine au premier /scan (ou apres dix minutes).
+
+    nav2 s'enchaine sur sa fin : sans scan, slam_toolbox ne publie pas le
+    repere map, la costmap globale expire a l'activation et le gestionnaire
+    de cycle de vie abandonne le bringup sans jamais reessayer. Le LiDAR reel
+    met de 15 s a plus de deux minutes a demarrer (voir wait_for_scan.py).
+    """
+    return Node(
+        package='alidade_bringup', executable='wait_for_scan.py', name='wait_for_scan',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time, 'topic': '/scan', 'timeout': 600.0}],
+    )
+
+
 def include(launch_file: str, **arguments) -> IncludeLaunchDescription:
     return IncludeLaunchDescription(
         PythonLaunchDescriptionSource(str(bringup_share() / 'launch' / launch_file)),

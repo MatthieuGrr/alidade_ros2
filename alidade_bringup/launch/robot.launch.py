@@ -6,8 +6,9 @@
     ros2 launch alidade_bringup robot.launch.py mock:=true     # sans Pico (mock_components)
 
 Ordre de demarrage : robot_state_publisher et controller_manager, puis les
-trois controleurs l'un apres l'autre, puis le SLAM et la navigation une fois
-l'odometrie disponible. Le LiDAR demarre en parallele, il ne depend de rien.
+trois controleurs l'un apres l'autre, puis le SLAM une fois l'odometrie
+disponible, et la navigation une fois le premier scan recu. Le LiDAR demarre
+en parallele, il ne depend de rien -- mais tout le monde depend de lui.
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
@@ -50,15 +51,15 @@ def setup(context):
                                         hardware_revision=revision, use_sim_time=use_sim_time))
 
     # nav2 a besoin de map -> odom : activer nav sans slam n'aurait pas de sens.
-    followers = []
     if slam or nav:
-        followers.append(actions.include('slam.launch.py',
-                                         hardware_revision=revision, use_sim_time=use_sim_time))
+        launched.append(actions.after(last_spawner, [
+            actions.include('slam.launch.py', hardware_revision=revision, use_sim_time=use_sim_time)]))
+    # ... et d'un premier scan, sinon son bringup expire et n'est jamais retente.
     if nav:
-        followers.append(actions.include('nav.launch.py',
-                                         hardware_revision=revision, use_sim_time=use_sim_time))
-    if followers:
-        launched.append(actions.after(last_spawner, followers))
+        gate = actions.scan_gate(use_sim_time)
+        launched.append(actions.after(last_spawner, [gate]))
+        launched.append(actions.after(gate, [
+            actions.include('nav.launch.py', hardware_revision=revision, use_sim_time=use_sim_time)]))
 
     return launched
 

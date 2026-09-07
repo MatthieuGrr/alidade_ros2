@@ -69,14 +69,6 @@ def setup(context):
 
     chain, last_spawner = actions.controller_chain(use_sim_time)
 
-    followers = []
-    if slam or nav:
-        followers.append(actions.include('slam.launch.py',
-                                         hardware_revision=revision, use_sim_time=use_sim_time))
-    if nav:
-        followers.append(actions.include('nav.launch.py',
-                                         hardware_revision=revision, use_sim_time=use_sim_time))
-
     launched = [
         # Permet a Gazebo de resoudre les URI package:// des maillages.
         SetEnvironmentVariable('GZ_SIM_RESOURCE_PATH', str(params.description_share().parent)),
@@ -85,10 +77,18 @@ def setup(context):
         # Gazebo : on enchaine donc les spawners sur la fin du spawn.
         actions.after(spawn, chain),
     ]
-    if followers:
+    if slam or nav:
         # Le SLAM ne demarre qu'une fois l'odometrie disponible : sans
         # odom -> base_footprint, ses premiers scans partiraient a la poubelle.
-        launched.append(actions.after(last_spawner, followers))
+        launched.append(actions.after(last_spawner, [
+            actions.include('slam.launch.py', hardware_revision=revision, use_sim_time=use_sim_time)]))
+    if nav:
+        # Meme barriere que sur le robot reel : nav2 attend le premier scan.
+        # Instantane ici, mais la chaine reste identique des deux cotes.
+        gate = actions.scan_gate(use_sim_time)
+        launched.append(actions.after(last_spawner, [gate]))
+        launched.append(actions.after(gate, [
+            actions.include('nav.launch.py', hardware_revision=revision, use_sim_time=use_sim_time)]))
     return launched
 
 
