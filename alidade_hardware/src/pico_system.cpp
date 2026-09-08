@@ -150,9 +150,15 @@ CallbackReturn PicoSystem::on_activate(const rclcpp_lifecycle::State &)
     {
       std::lock_guard<std::mutex> lock(link_mutex_);
       if (link_.have_frame) {
+        // Le Pico compte depuis SON demarrage : sans cette origine, les
+        // positions de roue valaient des centaines de radians des la premiere
+        // lecture, et diff_drive_controller demarrait son odometrie plusieurs
+        // metres et dizaines de degres hors de l'origine.
+        enc_origin_[0] = link_.frame.enc[0];
+        enc_origin_[1] = link_.frame.enc[1];
         RCLCPP_INFO(
-          get_logger(), "Pico actif : t=%u ms, enc=(%d, %d)", link_.frame.t_ms, link_.frame.enc[0],
-          link_.frame.enc[1]);
+          get_logger(), "Pico actif : t=%u ms, enc=(%d, %d) pris comme origine", link_.frame.t_ms,
+          link_.frame.enc[0], link_.frame.enc[1]);
         return CallbackReturn::SUCCESS;
       }
       if (!link_.failure.empty()) {
@@ -289,7 +295,11 @@ return_type PicoSystem::read(const rclcpp::Time & time, const rclcpp::Duration &
   if (snapshot.have_frame) {
     const auto & f = snapshot.frame;
     for (size_t i = 0; i < joint_names_.size(); ++i) {
-      set_state(joint_names_[i] + "/" + hardware_interface::HW_IF_POSITION, f.enc[i] * rad_per_tick_);
+      // Difference en 32 bits signes : correcte meme si le compteur du Pico
+      // deborde entre l'activation et maintenant.
+      const int32_t ticks = static_cast<int32_t>(
+        static_cast<uint32_t>(f.enc[i]) - static_cast<uint32_t>(enc_origin_[i]));
+      set_state(joint_names_[i] + "/" + hardware_interface::HW_IF_POSITION, ticks * rad_per_tick_);
       set_state(joint_names_[i] + "/" + hardware_interface::HW_IF_VELOCITY, f.vel[i] * rad_per_tick_);
     }
     if (!imu_name_.empty()) {

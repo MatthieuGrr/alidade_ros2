@@ -89,6 +89,9 @@ private:
   rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_pub_;
   rclcpp::Time last_diagnostics_{0, 0, RCL_ROS_TIME};
   int32_t last_cmd_[2] = {0, 0};
+  // Origine des compteurs, prise a l'activation : le Pico compte depuis SON
+  // demarrage, pas depuis le notre (voir on_activate).
+  int32_t enc_origin_[2] = {0, 0};
 };
 
 }  // namespace alidade_hardware

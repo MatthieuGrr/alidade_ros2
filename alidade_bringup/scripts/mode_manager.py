@@ -353,9 +353,13 @@ class ModeManager(Node):
                 self.lc_deactivate('slam_toolbox')
                 self.set_flag('slam_active', False)
             elif target == 'amcl' and action == 'activate':
-                # Nouvelle activation : on attend une nouvelle pose initiale.
+                # Redemarrage complet, pas une simple reactivation : amcl garde
+                # son filtre d'une activation a l'autre et republie aussitot la
+                # pose de la session precedente. Le gestionnaire le croyait
+                # localise et lancait la planification sur une pose perimee,
+                # eventuellement issue d'une AUTRE carte.
                 self.set_flag('amcl_converged', False)
-                self.lc_bring_to_active('amcl')
+                self.lc_fresh('amcl')
                 self.set_flag('amcl_active', True)
             elif target == 'amcl' and action == 'deactivate':
                 self.lc_deactivate('amcl')

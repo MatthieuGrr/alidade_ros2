@@ -393,6 +393,25 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   640×480 en `rgb8` fait 900 ko, que CycloneDDS fragmente en centaines de
   datagrammes. En `best_effort`, un fragment perdu jette le message entier, et
   le compteur ne voyait **rien** passer alors que le flux tournait.
+- Le Pico compte les ticks depuis **son** démarrage, pas depuis celui de ROS.
+  Sans origine prise à l'activation, les positions de roue valaient plus de
+  1500 rad dès la première lecture et `diff_drive_controller` démarrait son
+  odométrie à plusieurs mètres et dizaines de degrés de l'origine.
+  `PicoSystem::on_activate` mémorise donc les compteurs comme référence.
+- `amcl` **garde son filtre** d'une désactivation à l'autre et republie
+  aussitôt la pose de la session précédente, éventuellement issue d'une autre
+  carte. Le gestionnaire le croyait localisé et lançait la planification
+  dessus : il le redémarre donc complètement (nettoyage, configuration,
+  activation) à chaque entrée en `LOCALIZATION`.
+- nav2 rejette toute pose dont le quaternion s'écarte de la norme 1 de plus
+  de 1e-4 (« Received initialpose message is malformed »). Un quaternion
+  saisi à la main avec trois décimales suffit à se faire jeter : le calculer,
+  ne pas l'arrondir.
+- Une carte ne se construit qu'en **roulant**. Un LiDAR 360° qui tourne sur
+  place ne découvre rien, et la carte reste identique — ce n'est pas une
+  panne. Mesuré : 912 cellules connues à l'arrêt, 8363 après 1,6 m de
+  trajet. Une carte trop pauvre ne permet pas à AMCL de converger ;
+  au-dessus de ~400 cellules de mur, l'écart-type tombe à 6 cm en un mètre.
 - Le moniteur de collision utilise un polygone **`approach`** et non `stop` :
   il projette l'empreinte le long de la commande reçue et ne freine que si
   *cette* trajectoire touche quelque chose. Avec un `stop` circulaire, toute
