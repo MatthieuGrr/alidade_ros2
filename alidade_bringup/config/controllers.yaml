@@ -11,6 +11,21 @@ controller_manager:
     update_rate: ${pico.frame_rate_hz}
     use_sim_time: ${use_sim_time}
 
+    # Diagnostics de ros2_control. Les seuils par defaut de l'ecart-type des
+    # temps d'execution (100 / 200 us) visent une boucle temps reel ; ici elle
+    # est cadencee par les trames USB du Pico sur un noyau ordinaire. MESURE
+    # au repos : moyennes de 20 a 83 us pour un cycle de 20 ms (0.4 % du
+    # budget), ecarts-types de 87 a 258 us, gonfles par de rares pics de 6 ms
+    # au demarrage que ces statistiques cumulees ne relachent jamais. On elargit
+    # donc l'ecart-type -- 1 ms reste 5 % du cycle -- et on garde les seuils de
+    # la MOYENNE et de la periodicite aux valeurs par defaut : ce sont eux qui
+    # disent si la boucle tient. La periodicite mesuree est de 50.06 Hz avec un
+    # ecart-type de 1.99 Hz, bien dans les clous.
+    diagnostics.threshold.controllers.execution_time.standard_deviation.warn: 500.0
+    diagnostics.threshold.controllers.execution_time.standard_deviation.error: 1000.0
+    diagnostics.threshold.hardware_components.execution_time.standard_deviation.warn: 500.0
+    diagnostics.threshold.hardware_components.execution_time.standard_deviation.error: 1000.0
+
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
     diff_drive_controller:

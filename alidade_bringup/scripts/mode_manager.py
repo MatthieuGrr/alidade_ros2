@@ -35,6 +35,7 @@ from lifecycle_msgs.msg import State, Transition
 from lifecycle_msgs.srv import ChangeState, GetState
 from nav2_msgs.action import NavigateToPose
 from nav2_msgs.srv import LoadMap, ManageLifecycleNodes, SaveMap
+from nav_msgs.msg import OccupancyGrid
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import SetParameters
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
@@ -44,7 +45,6 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from slam_toolbox.srv import SerializePoseGraph
 from std_msgs.msg import Empty
 from std_srvs.srv import Trigger
-from tf2_msgs.msg import TFMessage
 
 try:  # paquet tiers (system/sources.sh) : sans lui, EXPLORATION est refuse proprement
     from frontier_exploration_ros2.srv import ControlExploration
@@ -74,12 +74,12 @@ class ModeManager(Node):
         self.declare_parameter('maps_dir', '~/alidade_maps')
         self.declare_parameter('lifecycle_timeout', 30.0)
         self.declare_parameter('nav_timeout', 120.0)
-        self.declare_parameter('tf_fresh_s', 2.0)
+        self.declare_parameter('map_fresh_s', 5.0)
         self.maps_dir = Path(os.path.expanduser(self.get_parameter('maps_dir').value))
         self.maps_dir.mkdir(parents=True, exist_ok=True)
         self.lc_timeout = float(self.get_parameter('lifecycle_timeout').value)
         self.nav_timeout = float(self.get_parameter('nav_timeout').value)
-        self.tf_fresh_s = float(self.get_parameter('tf_fresh_s').value)
+        self.map_fresh_s = float(self.get_parameter('map_fresh_s').value)
 
         # Etat observe.
         self.lock = threading.Lock()          # protege les champs ci-dessous
@@ -90,7 +90,8 @@ class ModeManager(Node):
         self.current_map = ''
         self.slam_active = False       # etats etablis par nos propres transitions
         self.amcl_active = False
-        self.last_map_odom = 0.0
+        self.last_map = 0.0            # slam_toolbox publie sa carte, donc map -> odom
+        self.amcl_converged = False    # amcl a publie une pose depuis son activation
         self.amcl_sigma = None
         self.nav_active = False
         self.nav_busy = False
@@ -104,7 +105,11 @@ class ModeManager(Node):
 
         io = ReentrantCallbackGroup()
         self.io = io
-        self.create_subscription(TFMessage, '/tf', self.on_tf, 100, callback_group=io)
+        # Pas d'abonnement a /tf : 118 Hz de transformations desserialisees en
+        # Python pour une seule information (le repere map existe-t-il ?), soit
+        # le poste de depense principal du noeud. Chaque source de localisation
+        # a un signal propre bien moins couteux, et qui dit la meme chose.
+        self.create_subscription(OccupancyGrid, '/map', self.on_map, LATCHED, callback_group=io)
         self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.on_amcl, 10, callback_group=io)
         self.create_subscription(GoalStatusArray, '/navigate_to_pose/_action/status', self.on_goal_status,
                                  LATCHED, callback_group=io)
@@ -142,16 +147,15 @@ class ModeManager(Node):
         threading.Thread(target=self.startup, daemon=True).start()
 
     # ------------------------------------------------------------------ observation
-    def on_tf(self, msg):
-        for t in msg.transforms:
-            if t.header.frame_id == 'map' and t.child_frame_id == 'odom':
-                with self.lock:
-                    self.last_map_odom = time.monotonic()
+    def on_map(self, _msg):
+        with self.lock:
+            self.last_map = time.monotonic()
 
     def on_amcl(self, msg):
         c = msg.pose.covariance
         with self.lock:
             self.amcl_sigma = math.sqrt(max(c[0], 0.0) + max(c[7], 0.0))
+            self.amcl_converged = True
 
     def on_goal_status(self, msg):
         if not msg.status_list:
@@ -176,20 +180,42 @@ class ModeManager(Node):
             s = levels.get(name)
             return s is not None and s.level == DiagnosticStatus.OK
 
+        def sensor_ok(keyword):
+            """Cherche par mot-cle sous Capteurs plutot que par nom exact : ces
+            noms sont derives des topics surveilles (telemetry.yaml) et bougent
+            avec eux. Sain = au moins un diagnostic trouve, et aucun en defaut."""
+            found = [s for n, s in levels.items()
+                     if n.startswith('/Alidade/Capteurs/') and keyword in n]
+            return bool(found) and all(s.level == DiagnosticStatus.OK for s in found)
+
         with self.lock:
             self.health = root.level if root else DiagnosticStatus.STALE
             self.errors = [f"{s.name.rsplit('/', 1)[1]} : {s.message}" for s in groups
                            if s.level in (DiagnosticStatus.WARN, DiagnosticStatus.ERROR)]
             self.sensors = {
-                'lidar': ok('/Alidade/Capteurs/scan'),
-                'camera': ok('/Alidade/Capteurs/camera image'),
-                'imu': ok('/Alidade/Capteurs/imu data_raw'),
+                'lidar': sensor_ok('scan'),
+                'camera': sensor_ok('camera'),
+                'imu': sensor_ok('imu'),
                 'pico': ok('/Alidade/Pico'),
             }
 
-    def localized(self) -> bool:
+    def localized(self, mode: int | None = None) -> bool:
+        """Le repere map existe et nav2 peut tourner.
+
+        En cartographie, slam_toolbox republie /map a map_update_interval tant
+        qu'il traite des scans, et publie map -> odom en meme temps : une carte
+        fraiche suffit. Avec amcl, en revanche, /amcl_pose n'est publie qu'aux
+        mises a jour du filtre -- rien a l'arret -- alors que la transformation,
+        elle, continue : c'est donc un drapeau depuis la premiere pose, remis a
+        zero a chaque activation.
+        """
         with self.lock:
-            return time.monotonic() - self.last_map_odom < self.tf_fresh_s
+            mode = self.mode if mode is None else mode
+            if mode in modes.SLAM_MODES:
+                return time.monotonic() - self.last_map < self.map_fresh_s
+            if mode in modes.AMCL_MODES:
+                return self.amcl_converged
+            return False
 
     # ------------------------------------------------------------------ appels bloquants
     def call(self, client, request, timeout: float, what: str):
@@ -324,11 +350,14 @@ class ModeManager(Node):
                 self.lc_deactivate('slam_toolbox')
                 self.set_flag('slam_active', False)
             elif target == 'amcl' and action == 'activate':
+                # Nouvelle activation : on attend une nouvelle pose initiale.
+                self.set_flag('amcl_converged', False)
                 self.lc_bring_to_active('amcl')
                 self.set_flag('amcl_active', True)
             elif target == 'amcl' and action == 'deactivate':
                 self.lc_deactivate('amcl')
                 self.set_flag('amcl_active', False)
+                self.set_flag('amcl_converged', False)
             elif target == 'map_server' and action == 'load':
                 self.step_map_load(arg)
             elif target == 'explore':
@@ -401,7 +430,8 @@ class ModeManager(Node):
                 else:
                     self.fall_back(str(why))
                 return
-            localized = self.localized()  # avant le verrou : localized() le prend aussi
+            # Selon le mode VISE, et hors verrou : localized() le prend aussi.
+            localized = self.localized(target)
             with self.lock:
                 self.mode = target
                 self.transitioning = False
@@ -421,6 +451,7 @@ class ModeManager(Node):
             except Step:
                 pass
             self.set_flag(flag, False)
+        self.set_flag('amcl_converged', False)
         with self.lock:
             self.mode = modes.IDLE
             self.transitioning = False

@@ -366,6 +366,30 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   pour décrire l'image brute, `camera_upright_optical_frame` est déclaré dans
   l'URDF avec la même rotation (le TF du nœud et celui de l'URDF concordent,
   pas de double parent), et la calibration se fait sur `/camera/image`.
+- **`image_transport` applique les remappages DEUX FOIS** : il résout le nom
+  de base lui-même, puis `create_publisher` le résout encore. Une règle dont
+  la cible est la source d'une autre se mord la queue — avec
+  `rotated/image → image` et `image → raw/image`, le nœud de retournement
+  republiait sa sortie sur sa propre entrée : `/camera/image` restait vide, la
+  boucle coûtait un demi-cœur et sa gigue faisait passer la périodicité du
+  `controller_manager` de 2 à 13 Hz d'écart-type. D'où `camera.launch.py` :
+  les deux nœuds vivent dans `/camera/raw`, où les noms par défaut tombent
+  juste, et une seule règle chacun.
+- Les nœuds `image_transport` sont **paresseux** : sans abonné sur leurs
+  images, ils n'émettent plus rien, pas même leur `camera_info`. `/camera/image`
+  muet est donc normal quand personne ne regarde. La supervision surveille
+  `/camera/raw/camera_info` (le pilote, lui, publie en continu) pour ne pas
+  forcer l'encodage JPEG en permanence.
+- Ne jamais compter des messages en s'abonnant à un flux lourd : une image
+  640×480 en `rgb8` fait 900 ko, que CycloneDDS fragmente en centaines de
+  datagrammes. En `best_effort`, un fragment perdu jette le message entier, et
+  le compteur ne voyait **rien** passer alors que le flux tournait.
+- Les seuils de diagnostic de `ros2_control` visent une boucle temps réel. Ici
+  elle est cadencée par les trames USB du Pico : les moyennes sont excellentes
+  (20 à 83 µs d'exécution pour 20 ms de cycle, périodicité 50,06 Hz ± 1,99),
+  mais de rares pics de 6 ms au démarrage gonflent définitivement des
+  statistiques cumulées. Seuls les écarts-types sont élargis dans
+  `controllers.yaml`, jamais ceux des moyennes.
 - Gazebo : `empty.sdf` n'embarque ni `gz-sim-sensors-system` ni
   `gz-sim-imu-system` ; `arena.sdf` les déclare. Les roues ont un disque de
   collision de 4 mm, pas la largeur réelle du pneu, sinon l'entraxe

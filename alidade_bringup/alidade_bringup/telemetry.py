@@ -43,14 +43,28 @@ TIMESYNC = Path('/run/systemd/timesync/synchronized')
 
 # --------------------------------------------------------------------------- lecteurs
 
-def vcgencmd(*args: str) -> str | None:
+_VCGENCMD_CACHE: dict[str, tuple[float, str | None]] = {}
+
+
+def vcgencmd(*args: str, ttl: float = 0.0) -> str | None:
+    """Sortie de vcgencmd, mise en cache `ttl` secondes. Chaque appel est un
+    fork : a 1 Hz, deux forks par seconde pesaient un dixieme de coeur sur le
+    Pi pour des valeurs qui bougent lentement (throttling, rails du PMIC)."""
     if shutil.which('vcgencmd') is None:
         return None
+    key = ' '.join(args)
+    now = time.monotonic()
+    if ttl > 0.0:
+        cached = _VCGENCMD_CACHE.get(key)
+        if cached is not None and now - cached[0] < ttl:
+            return cached[1]
     try:
         out = subprocess.run(['vcgencmd', *args], capture_output=True, text=True, timeout=2.0)
+        result = out.stdout if out.returncode == 0 else None
     except (OSError, subprocess.SubprocessError):
-        return None
-    return out.stdout if out.returncode == 0 else None
+        result = None
+    _VCGENCMD_CACHE[key] = (now, result)
+    return result
 
 
 def parse_throttled(text: str) -> dict:
@@ -130,8 +144,10 @@ def read_system() -> dict:
 
 def sample() -> dict:
     """Toutes les sources d'un coup ; les absentes valent None."""
-    throttled = vcgencmd('get_throttled')
-    pmic = vcgencmd('pmic_read_adc')
+    # La temperature est un simple fichier, lue a chaque tour ; les deux
+    # vcgencmd sont mis en cache (voir vcgencmd).
+    throttled = vcgencmd('get_throttled', ttl=5.0)
+    pmic = vcgencmd('pmic_read_adc', ttl=5.0)
     return {
         'temp_c': read_thermal(),
         'throttled': parse_throttled(throttled) if throttled else None,

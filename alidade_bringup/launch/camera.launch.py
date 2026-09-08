@@ -31,26 +31,32 @@ def setup(context):
     with open(rendered) as f:
         cfg = yaml.safe_load(f)
 
+    # Les deux noeuds vivent dans /camera/raw, ou les noms par defaut tombent
+    # deja juste : une seule regle de remappage chacun, et surtout aucune dont
+    # la cible soit la source d'une autre. image_transport resout le nom de
+    # base AVANT de creer ses publications, si bien qu'une regle s'applique
+    # DEUX fois : avec des regles qui se repondaient, le noeud de retournement
+    # republiait sa sortie sur sa propre entree (boucle, et /camera/image vide).
     return [ComposableNodeContainer(
         name='camera_container', namespace='camera',
         package='rclcpp_components', executable='component_container',
         output='screen',
         composable_node_descriptions=[
+            # Aucun remappage : ses noms par defaut donnent deja
+            # /camera/raw/image_raw (+ /compressed) et /camera/raw/camera_info.
             ComposableNode(
                 package='usb_cam', plugin='usb_cam::UsbCamNode', name='usb_cam',
-                namespace='camera',
+                namespace='camera/raw',
                 parameters=[cfg['usb_cam']['ros__parameters']],
-                remappings=[('image_raw', 'raw/image'),
-                            ('image_raw/compressed', 'raw/image/compressed'),
-                            ('camera_info', 'raw/camera_info')],
                 extra_arguments=[{'use_intra_process_comms': True}],
             ),
+            # Lit ces memes topics, et sort sur /camera/image (+ /compressed)
+            # et /camera/camera_info, ce dernier deduit par image_transport.
             ComposableNode(
                 package='image_rotate', plugin='image_rotate::ImageFlipNode', name='image_flip',
-                namespace='camera',
+                namespace='camera/raw',
                 parameters=[cfg['image_flip']['ros__parameters']],
-                remappings=[('image', 'raw/image'), ('camera_info', 'raw/camera_info'),
-                            ('rotated/image', 'image'), ('rotated/camera_info', 'camera_info')],
+                remappings=[('image', 'image_raw'), ('rotated/image', '/camera/image')],
                 extra_arguments=[{'use_intra_process_comms': True}],
             ),
         ],

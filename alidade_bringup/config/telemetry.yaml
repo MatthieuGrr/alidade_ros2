@@ -15,8 +15,20 @@ system_monitor:
     rate_warn_ratio: ${telemetry.rate_warn_ratio}
     # "topic|type|cadence attendue (Hz)[|optional]" : un capteur optionnel
     # absent vaut WARN, pas ERROR (la camera n'est pas vitale, le LiDAR si).
+    #
+    # Camera : on surveille le camera_info du PILOTE, en amont du retournement.
+    # Trois raisons, toutes verifiees sur le robot. Les images brutes font 900 ko
+    # (13.8 Mo/s a 15 Hz) que CycloneDDS fragmente en centaines de datagrammes :
+    # un fragment perdu et le message entier est jete, si bien qu'en best-effort
+    # ce compteur ne voyait PLUS RIEN passer alors que le flux tournait.
+    # S'abonner au flux compresse marche mais force l'encodage JPEG en
+    # permanence, un dixieme de coeur juste pour compter. Et le noeud de
+    # retournement est PARESSEUX : sans abonne sur ses images il n'emet plus
+    # rien, pas meme son camera_info. usb_cam, lui, publie en continu (mesure :
+    # 15.0 Hz avec zero abonne) pour quelques centaines d'octets, et s'arrete
+    # exactement quand la camera s'arrete : c'est la vraie question de sante.
     watch:
       - "/scan|sensor_msgs/msg/LaserScan|${lidar.rotation_hz}"
-      - "/camera/image|sensor_msgs/msg/Image|${camera.fps}|optional"
+      - "/camera/raw/camera_info|sensor_msgs/msg/CameraInfo|${camera.fps}|optional"
       - "/imu/data_raw|sensor_msgs/msg/Imu|${pico.frame_rate_hz}"
       - "/diff_drive_controller/odom|nav_msgs/msg/Odometry|50"
