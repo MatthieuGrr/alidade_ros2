@@ -12,7 +12,9 @@ Regles :
   - nav2 n'est pas pilote ici : le gestionnaire le demarre des que map -> odom
     existe dans un mode qui navigue, et le met en pause sinon
     (voir mode_manager.py, reconciliation) ;
-  - EXPLORATION et DOCKING sont reserves : phases 5 et 6 de la feuille de route.
+  - EXPLORATION = MAPPING plus l'explorateur de frontieres, qui pousse ses
+    propres buts nav2 ; on l'arrete avant de quitter le mode ;
+  - DOCKING est reserve : phase 6 de la feuille de route.
 """
 from __future__ import annotations
 
@@ -27,7 +29,7 @@ BY_NAME = {v: k for k, v in NAMES.items()}
 SLAM_MODES = {MAPPING, EXPLORATION}
 AMCL_MODES = {LOCALIZATION, DOCKING}
 NAVIGATING_MODES = SLAM_MODES | AMCL_MODES
-IMPLEMENTED = {IDLE, TELEOP, MAPPING, LOCALIZATION}
+IMPLEMENTED = {IDLE, TELEOP, MAPPING, LOCALIZATION, EXPLORATION}
 
 
 @dataclass
@@ -80,6 +82,10 @@ def plan(ctx: Context, target: int, map_name: str = '') -> Plan:
     if target == ctx.current and (target not in AMCL_MODES or same_map):
         return Plan(target, [], chosen_map if target in AMCL_MODES else ctx.current_map)
 
+    # L'exploration s'arrete avant tout le reste : elle tient un but nav2.
+    if ctx.current == EXPLORATION:
+        steps.append(('explore', 'stop', ''))
+
     # Tout changement commence par lacher le but en cours.
     steps.append(('nav', 'cancel', ''))
 
@@ -89,12 +95,15 @@ def plan(ctx: Context, target: int, map_name: str = '') -> Plan:
     if ctx.amcl_active and (target not in AMCL_MODES or not same_map):
         steps.append(('amcl', 'deactivate', ''))
 
-    # Entrer dans la nouvelle.
+    # Entrer dans la nouvelle. L'exploration continue la carte en cours si le
+    # SLAM tourne deja (MAPPING -> EXPLORATION), sinon en commence une.
     if target in SLAM_MODES and not ctx.slam_active:
         steps.append(('slam', 'fresh', ''))
     if target in AMCL_MODES and not same_map:
         steps.append(('map_server', 'load', chosen_map))
         steps.append(('amcl', 'activate', ''))
+    if target == EXPLORATION:
+        steps.append(('explore', 'start', ''))
 
     return Plan(target, steps, chosen_map if target in AMCL_MODES else '')
 

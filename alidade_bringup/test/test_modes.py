@@ -49,11 +49,24 @@ def test_back_to_idle_drops_localization():
 
 
 def test_reserved_modes_are_refused():
-    for mode in (m.EXPLORATION, m.DOCKING):
-        with pytest.raises(m.Refused, match='feuille de route'):
-            m.plan(m.Context(current=m.MAPPING), mode)
+    with pytest.raises(m.Refused, match='feuille de route'):
+        m.plan(m.Context(current=m.MAPPING), m.DOCKING)
     with pytest.raises(m.Refused, match='inconnu'):
         m.plan(m.Context(current=m.IDLE), 42)
+
+
+def test_exploration_extends_mapping():
+    # Depuis MAPPING : on garde la carte en cours, on lance l'explorateur.
+    p = m.plan(m.Context(current=m.MAPPING, slam_active=True), m.EXPLORATION)
+    assert steps(p) == [('nav', 'cancel'), ('explore', 'start')]
+    # Depuis IDLE : carte neuve d'abord.
+    p = m.plan(m.Context(current=m.IDLE), m.EXPLORATION)
+    assert steps(p) == [('nav', 'cancel'), ('slam', 'fresh'), ('explore', 'start')]
+    # En sortir arrete l'explorateur avant tout, et garde le SLAM pour MAPPING.
+    ctx = m.Context(current=m.EXPLORATION, slam_active=True)
+    assert steps(m.plan(ctx, m.MAPPING)) == [('explore', 'stop'), ('nav', 'cancel')]
+    assert steps(m.plan(ctx, m.IDLE)) == [('explore', 'stop'), ('nav', 'cancel'), ('slam', 'deactivate')]
+    assert m.nav_wanted(m.EXPLORATION, True)
 
 
 def test_nav_only_when_localized_in_a_navigating_mode():

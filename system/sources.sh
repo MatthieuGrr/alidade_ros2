@@ -16,6 +16,7 @@ SRC="$WORKSPACE/src"
 # nom | depot | branche | commit
 SOURCES='
 vizanti | https://github.com/MoffKalast/vizanti.git | ros2 | 892f95171c259abdb09d8079c83021a830daf565
+frontier_exploration_ros2 | https://github.com/mertgulerx/frontier_exploration_ros2.git | main | ec530d2a813739cd25dd0c438d2365c510b9fad8
 '
 
 mkdir -p "$SRC"

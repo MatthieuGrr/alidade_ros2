@@ -99,6 +99,9 @@ def autonomy(revision: str, use_sim_time: bool, last_spawner, *, slam: bool, nav
             include('slam.launch.py', autostart=False, **common),
             include('localization.launch.py', **common),
             mode_manager(use_sim_time, mode),
+            # Explorateur de frontieres, inactif tant que le mode EXPLORATION
+            # ne l'a pas demande ; se retire seul si le paquet manque.
+            include('exploration.launch.py', **common),
             # L'interface n'a de sens qu'avec le gestionnaire ; elle se
             # retire seule si Vizanti n'est pas dans le workspace.
             include('ui.launch.py'),

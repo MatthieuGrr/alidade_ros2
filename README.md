@@ -137,7 +137,13 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    ```
    Modes : `IDLE` 0, `TELEOP` 1, `MAPPING` 2 (slam_toolbox), `LOCALIZATION` 3
    (amcl sur une carte de `~/alidade_maps/<nom>/`, pose initiale à donner
-   sur `/initialpose`), `EXPLORATION` 4 et `DOCKING` 5 (réservés). Une seule
+   sur `/initialpose`), `EXPLORATION` 4 (cartographie plus l'explorateur de
+   frontières [frontier_exploration_ros2](https://github.com/mertgulerx/frontier_exploration_ros2),
+   cloné par `system/sources.sh`, réglé dans `config/exploration.yaml` : il
+   pousse ses buts nav2, publie `/exploration_complete` quand il n'y a plus
+   de frontière et rentre au point de départ ; le gestionnaire sauvegarde
+   alors la carte sous `exploration_<date>` et repasse en `MAPPING`) et
+   `DOCKING` 5 (réservé). Une seule
    source de `map → odom` à la fois, et nav2 ne tourne que quand ce repère
    existe dans un mode qui navigue : sans cette règle sa costmap globale
    expire à l'activation et son lifecycle manager abandonne pour de bon.

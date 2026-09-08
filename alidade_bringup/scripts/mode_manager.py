@@ -42,8 +42,14 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from slam_toolbox.srv import SerializePoseGraph
+from std_msgs.msg import Empty
 from std_srvs.srv import Trigger
 from tf2_msgs.msg import TFMessage
+
+try:  # paquet tiers (system/sources.sh) : sans lui, EXPLORATION est refuse proprement
+    from frontier_exploration_ros2.srv import ControlExploration
+except ImportError:
+    ControlExploration = None
 
 from alidade_bringup import modes
 from alidade_msgs.msg import RobotState
@@ -117,6 +123,12 @@ class ModeManager(Node):
                                                  callback_group=io)
         self.cli_nav_active = self.create_client(Trigger, '/lifecycle_manager_navigation/is_active', callback_group=io)
         self.cli_cancel = self.create_client(CancelGoal, '/navigate_to_pose/_action/cancel_goal', callback_group=io)
+        self.cli_explore = None
+        if ControlExploration is not None:
+            self.cli_explore = self.create_client(ControlExploration, '/control_exploration', callback_group=io)
+        self.explore_started_at = 0.0
+        self.explore_done = False
+        self.create_subscription(Empty, '/exploration_complete', self.on_explore_done, LATCHED, callback_group=io)
 
         srv = MutuallyExclusiveCallbackGroup()
         self.create_service(SetMode, '/mode_manager/set_mode', self.on_set_mode, callback_group=srv)
@@ -232,6 +244,51 @@ class ModeManager(Node):
             self.set_substate('annulation du but')
             self.call(self.cli_cancel, CancelGoal.Request(), 5.0, 'annulation')
 
+    def step_explore(self, start: bool):
+        if self.cli_explore is None:
+            raise Step('explorateur absent (frontier_exploration_ros2 non installe)')
+        action = ControlExploration.Request.ACTION_START if start else ControlExploration.Request.ACTION_STOP
+        self.set_substate('exploration : ' + ('demarrage' if start else 'arret'))
+        res = self.call(self.cli_explore,
+                        ControlExploration.Request(action=action, delay_seconds=0.0, quit_after_stop=False),
+                        15.0, 'control_exploration')
+        if not res.accepted:
+            raise Step(f'explorateur : {res.message}')
+        with self.lock:
+            self.explore_started_at = time.monotonic() if start else 0.0
+            self.explore_done = False
+
+    def on_explore_done(self, _msg):
+        """Plus de frontiere : l'explorateur rentre au depart de lui-meme ; on
+        sauvegarde la carte, puis on repasse en MAPPING une fois le retour fini.
+        Le topic est transient_local : un vieux message rejoue au demarrage,
+        d'ou la garde sur le mode et l'age de l'exploration."""
+        with self.lock:
+            fresh = self.mode == modes.EXPLORATION and not self.explore_done \
+                and time.monotonic() - self.explore_started_at > 5.0
+            if fresh:
+                self.explore_done = True
+        if not fresh:
+            return
+        self.get_logger().info('exploration terminee : sauvegarde de la carte, retour au depart')
+        threading.Thread(target=self.finish_exploration, daemon=True).start()
+
+    def finish_exploration(self):
+        name = datetime.now().strftime('exploration_%Y%m%d_%H%M%S')
+        self.save_map(name, self.maps_dir / name)
+        deadline = time.monotonic() + 180.0
+        time.sleep(3.0)
+        while time.monotonic() < deadline:
+            with self.lock:
+                if self.mode != modes.EXPLORATION:
+                    return
+                if not self.goal_active:
+                    break
+                self.substate = f'carte {name} sauvegardee, retour au depart'
+            time.sleep(1.0)
+        ok, msg = self.request_mode(modes.MAPPING)
+        self.get_logger().info(f'fin d exploration -> MAPPING : {msg}')
+
     def step_map_load(self, name: str):
         path = self.maps_dir / name / 'map.yaml'
         if not path.exists():
@@ -274,6 +331,8 @@ class ModeManager(Node):
                 self.set_flag('amcl_active', False)
             elif target == 'map_server' and action == 'load':
                 self.step_map_load(arg)
+            elif target == 'explore':
+                self.step_explore(action == 'start')
             else:
                 raise Step(f'etape inconnue : {target} {action}')
 
@@ -330,7 +389,17 @@ class ModeManager(Node):
                 self.execute(plan)
             except Step as why:
                 self.get_logger().error(f'transition vers {modes.name_of(target)} : {why}')
-                self.fall_back(str(why))
+                with self.lock:
+                    slam_ok = self.slam_active
+                if target == modes.EXPLORATION and slam_ok:
+                    # L'explorateur manque ou refuse : la carte en cours reste
+                    # bonne, on reste en cartographie plutot que de tout couper.
+                    with self.lock:
+                        self.mode = modes.MAPPING
+                        self.transitioning = False
+                        self.substate = f'exploration impossible : {why}'
+                else:
+                    self.fall_back(str(why))
                 return
             localized = self.localized()  # avant le verrou : localized() le prend aussi
             with self.lock:
