@@ -620,8 +620,13 @@ class ModeManager(Node):
                 msg.localization_quality = 1.0 if localized else 0.0
             elif self.amcl_active:
                 msg.localization_source = 'amcl'
+                # Ecart-type de position combine, ramene sur un metre : une
+                # pose initiale posee a la main vaut deja 0.7 m d'incertitude,
+                # et une echelle a 0.5 m affichait 0 % sur une localisation
+                # pourtant valide. Au-dela d'un metre dans une piece de six, on
+                # est bel et bien perdu.
                 sigma = self.amcl_sigma
-                msg.localization_quality = max(0.0, min(1.0, 1.0 - sigma / 0.5)) if sigma is not None and localized else 0.0
+                msg.localization_quality = max(0.0, min(1.0, 1.0 - sigma)) if sigma is not None and localized else 0.0
             msg.localized = localized
             msg.map_name = self.current_map
             msg.nav_active = self.nav_active

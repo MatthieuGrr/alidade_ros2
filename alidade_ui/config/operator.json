@@ -1,4 +1,5 @@
 {
+  "_note": "Le repere fixe est 'map', et non 'odom' : les widgets de pose initiale et de but publient dans CE repere (frame_id: tf.fixed_frame). Avec 'odom', AMCL rejetait la pose initiale -- 'initial poses must be in the global frame' -- et la carte, publiee dans 'map', ne pouvait pas etre dessinee faute de transformation map->odom. Cercle vicieux : sans pose valide, pas de map->odom, donc ni carte ni localisation. En contrepartie, rien ne s'affiche tant qu'aucune source de localisation ne tourne (IDLE) : c'est normal, et le widget Reglages permet de basculer sur 'odom' pour conduire sans carte.",
   "navbar": [
     { "type": "settings", "id": "settings_default" },
     { "type": "rosbridge", "id": "rosbridge_default" },
@@ -16,7 +17,7 @@
   "uid": 0,
   "view": { "center": { "x": 0, "y": 0 }, "scale": 50 },
 
-  "settings_default": { "fixed_frame": "odom", "background_color": "#10171d" },
+  "settings_default": { "fixed_frame": "map", "background_color": "#10171d" },
   "grid_default": { "size": 1.0, "thickness": 1, "colour": "#2b3843", "colour_sub": "#1f2a33",
                     "autoscale": "Off", "subdivisions": 1, "frame": "" },
   "tf_default": { "show_names": false, "show_axes": true, "show_lines": false, "scale": 1.0,
