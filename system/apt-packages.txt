@@ -18,6 +18,10 @@ ros-jazzy-diagnostic-msgs
 # Supervision : agregateur de diagnostics, mesures systeme
 ros-jazzy-diagnostic-aggregator
 python3-psutil
+# Interface web (Vizanti, clone par system/sources.sh) : passerelle et serveur
+ros-jazzy-rosbridge-suite
+python3-flask
+python3-waitress
 ros-jazzy-teleop-twist-keyboard
 ros-jazzy-tf2-tools
 python3-colcon-common-extensions

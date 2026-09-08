@@ -82,6 +82,8 @@ class ModeManager(Node):
         self.substate = 'demarrage'
         self.transitioning = False
         self.current_map = ''
+        self.slam_active = False       # etats etablis par nos propres transitions
+        self.amcl_active = False
         self.last_map_odom = 0.0
         self.amcl_sigma = None
         self.nav_active = False
@@ -260,50 +262,76 @@ class ModeManager(Node):
                 self.step_nav_cancel()
             elif target == 'slam' and action == 'fresh':
                 self.lc_fresh('slam_toolbox')
+                self.set_flag('slam_active', True)
             elif target == 'slam' and action == 'deactivate':
                 self.lc_deactivate('slam_toolbox')
+                self.set_flag('slam_active', False)
             elif target == 'amcl' and action == 'activate':
                 self.lc_bring_to_active('amcl')
+                self.set_flag('amcl_active', True)
             elif target == 'amcl' and action == 'deactivate':
                 self.lc_deactivate('amcl')
+                self.set_flag('amcl_active', False)
             elif target == 'map_server' and action == 'load':
                 self.step_map_load(arg)
             else:
                 raise Step(f'etape inconnue : {target} {action}')
 
-    def snapshot(self) -> modes.Context:
-        # (pas 'context' : c'est un attribut de rclpy.Node)
+    def set_flag(self, name: str, value: bool):
         with self.lock:
-            current, current_map = self.mode, self.current_map
-        return modes.Context(current=current, maps=self.list_maps(), current_map=current_map,
-                             slam_active=self.safe_state('slam_toolbox') == State.PRIMARY_STATE_ACTIVE,
-                             amcl_active=self.safe_state('amcl') == State.PRIMARY_STATE_ACTIVE)
+            setattr(self, name, value)
 
-    def safe_state(self, name: str) -> int:
-        try:
-            return self.lc_state(name)
-        except Step:
-            return State.PRIMARY_STATE_UNKNOWN
+    def snapshot(self) -> modes.Context:
+        # (pas 'context' : c'est un attribut de rclpy.Node). Les etats des
+        # sources sont ceux que le gestionnaire a lui-meme etablis : pas
+        # d'appel de service ici, la reponse a set_mode doit etre immediate.
+        with self.lock:
+            return modes.Context(current=self.mode, maps=self.list_maps(), current_map=self.current_map,
+                                 slam_active=self.slam_active, amcl_active=self.amcl_active)
 
-    def change_mode(self, target: int, map_name: str = '') -> tuple[bool, str]:
-        if not self.busy.acquire(timeout=1.0):
+    def request_mode(self, target: int, map_name: str = '') -> tuple[bool, str]:
+        """Verifie et lance la transition ; le resultat se lit dans /robot/state.
+
+        rosbridge coupe un appel de service a 5 s et une transition peut en
+        prendre soixante (demarrage de nav2) : on repond des que le plan est
+        accepte, et un fil l'execute.
+        """
+        if not self.busy.acquire(blocking=False):
             return False, 'une transition est deja en cours'
         try:
-            try:
-                plan = modes.plan(self.snapshot(), target, map_name)
-            except modes.Refused as why:
-                return False, str(why)
-            if not plan.steps:
-                return True, f'deja en {modes.name_of(target)}'
+            plan = modes.plan(self.snapshot(), target, map_name)
+        except modes.Refused as why:
+            self.busy.release()
+            return False, str(why)
+        if not plan.steps:
+            self.busy.release()
+            return True, f'deja en {modes.name_of(target)}'
+        with self.lock:
+            self.transitioning = True
+            self.substate = f'vers {modes.name_of(target)}'
+        threading.Thread(target=self.run_plan, args=(plan,), daemon=True).start()
+        return True, f'transition vers {modes.name_of(target)} lancee'
+
+    def change_mode(self, target: int, map_name: str = '') -> tuple[bool, str]:
+        """Variante bloquante, pour le demarrage."""
+        ok, msg = self.request_mode(target, map_name)
+        while self.busy.locked():
+            time.sleep(0.1)
+        with self.lock:
+            done = self.mode == target
+        return (ok and done), (msg if ok and done else (self.substate or msg))
+
+    def run_plan(self, plan: modes.Plan):
+        """Execute un plan accepte ; self.busy est deja pris par request_mode."""
+        target = plan.target
+        try:
             self.get_logger().info(f'{modes.name_of(self.mode)} -> {modes.name_of(target)} : {plan.summary}')
-            with self.lock:
-                self.transitioning = True
             try:
                 self.execute(plan)
             except Step as why:
                 self.get_logger().error(f'transition vers {modes.name_of(target)} : {why}')
                 self.fall_back(str(why))
-                return False, str(why)
+                return
             localized = self.localized()  # avant le verrou : localized() le prend aussi
             with self.lock:
                 self.mode = target
@@ -313,17 +341,17 @@ class ModeManager(Node):
                 if target in modes.AMCL_MODES:
                     self.current_map = plan.map_name
             self.get_logger().info(f'mode {modes.name_of(target)}')
-            return True, modes.name_of(target)
         finally:
             self.busy.release()
 
     def fall_back(self, why: str):
         """Apres un echec : plus aucune source de localisation, mode IDLE."""
-        for name in ('slam_toolbox', 'amcl'):
+        for name, flag in (('slam_toolbox', 'slam_active'), ('amcl', 'amcl_active')):
             try:
                 self.lc_deactivate(name)
             except Step:
                 pass
+            self.set_flag(flag, False)
         with self.lock:
             self.mode = modes.IDLE
             self.transitioning = False
@@ -397,17 +425,28 @@ class ModeManager(Node):
         return response
 
     def on_save_map(self, request, response):
+        """Lance la sauvegarde et repond tout de suite (rosbridge coupe a 5 s) ;
+        le resultat s'affiche dans le sous-etat de /robot/state."""
         with self.lock:
-            mode = self.mode
+            mode, busy = self.mode, self.transitioning
         if mode not in modes.SLAM_MODES:
             response.ok, response.message = False, 'pas de cartographie en cours'
+            return response
+        if busy:
+            response.ok, response.message = False, 'une transition est en cours'
             return response
         name = request.name.strip() or datetime.now().strftime('carte_%Y%m%d_%H%M%S')
         if '/' in name or name.startswith('.'):
             response.ok, response.message = False, f"nom invalide : '{name}'"
             return response
         folder = self.maps_dir / name
+        threading.Thread(target=self.save_map, args=(name, folder), daemon=True).start()
+        response.ok, response.message, response.path = True, f'sauvegarde de {name} lancee', str(folder)
+        return response
+
+    def save_map(self, name: str, folder: Path):
         folder.mkdir(parents=True, exist_ok=True)
+        self.set_substate(f'sauvegarde de {name}')
         try:
             self.lc_bring_to_active('map_saver')
             req = SaveMap.Request(map_topic='map', map_url=str(folder / 'map'), image_format='pgm',
@@ -420,17 +459,17 @@ class ModeManager(Node):
             if res.result != SerializePoseGraph.Response.RESULT_SUCCESS:
                 self.get_logger().warn('posegraph non sauvegarde (la carte pgm l est)')
         except Step as why:
-            response.ok, response.message = False, str(why)
-            return response
+            self.get_logger().error(f'sauvegarde de {name} : {why}')
+            self.set_substate(f'sauvegarde de {name} : {why}')
+            return
         with self.lock:
             self.current_map = name
-        response.ok, response.message, response.path = True, f'carte {name} sauvegardee', str(folder)
-        self.get_logger().info(response.message)
-        return response
+            self.substate = f'carte {name} sauvegardee'
+        self.get_logger().info(f'carte {name} sauvegardee dans {folder}')
 
     # ------------------------------------------------------------------ services et cycle
     def on_set_mode(self, request, response):
-        response.ok, response.message = self.change_mode(int(request.mode), request.map_name)
+        response.ok, response.message = self.request_mode(int(request.mode), request.map_name)
         return response
 
     def startup(self):

@@ -99,6 +99,9 @@ def autonomy(revision: str, use_sim_time: bool, last_spawner, *, slam: bool, nav
             include('slam.launch.py', autostart=False, **common),
             include('localization.launch.py', **common),
             mode_manager(use_sim_time, mode),
+            # L'interface n'a de sens qu'avec le gestionnaire ; elle se
+            # retire seule si Vizanti n'est pas dans le workspace.
+            include('ui.launch.py'),
         ]))
         gate = scan_gate(use_sim_time)
         launched.append(after(last_spawner, [gate]))

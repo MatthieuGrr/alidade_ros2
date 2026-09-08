@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>alidade_ui</name>
+  <version>0.1.0</version>
+  <description>Interface web d'Alidade : widgets et profils Vizanti (etat, modes, cartes).</description>
+  <maintainer email="matthieu.georger@gmail.com">Matthieu Georger</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>alidade_msgs</exec_depend>
+  <exec_depend>rosbridge_server</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -59,8 +59,9 @@ case "${1:-up}" in
       -v "$REPO/out:/out:rw" \
       --net=host --ipc=host \
       "$IMAGE" sleep infinity
+    # Depots tiers epingles (Vizanti...) a cote d'alidade_ros2, comme sur le Pi.
     docker exec "$NAME" bash -lc \
-      'cd /ws && source /opt/ros/jazzy/setup.bash && colcon build --symlink-install'
+      'cd /ws && bash src/alidade_ros2/system/sources.sh /ws && source /opt/ros/jazzy/setup.bash && colcon build --symlink-install'
     ;;
   rviz)
     view="${2:-robot}"; shift; [ $# -gt 0 ] && shift

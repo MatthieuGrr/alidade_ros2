@@ -1,0 +1,52 @@
+<div id="{uniqueID}_modal" class="modal_outer noselect">
+	<div class="modal_inner noselect">
+		<h3>Alidade</h3>
+
+		<p id="{uniqueID}_status" class="status">Status: Ok.</p>
+
+		<hr class="dark_hr"/>
+
+		<p style="margin:0 0 6px 0;"><b>Mode</b> : <span id="{uniqueID}_mode">?</span>
+			<span id="{uniqueID}_substate" style="color:#b4b4b4;"></span></p>
+		<div id="{uniqueID}_modes" style="display:flex; flex-wrap:wrap; gap:6px;">
+			<button class="alidade_mode" data-mode="0">IDLE</button>
+			<button class="alidade_mode" data-mode="1">TELEOP</button>
+			<button class="alidade_mode" data-mode="2">MAPPING</button>
+			<button class="alidade_mode" data-mode="3">LOCALIZATION</button>
+		</div>
+
+		<div class="spacer"></div>
+
+		<label for="{uniqueID}_map">Carte (LOCALIZATION) :</label>
+		<select id="{uniqueID}_map" name="map"></select>
+
+		<div class="spacer"></div>
+
+		<label for="{uniqueID}_savename">Sauvegarder la carte en cours :</label>
+		<div style="display:flex; gap:6px;">
+			<input id="{uniqueID}_savename" type="text" placeholder="nom (vide = horodatage)" style="flex:1;">
+			<button id="{uniqueID}_save">Sauvegarder</button>
+		</div>
+
+		<hr class="dark_hr"/>
+
+		<div class="live_data_display">
+			<p>Localisation : <span id="{uniqueID}_loc">?</span></p>
+			<p>Carte : <span id="{uniqueID}_mapname">?</span></p>
+			<p>nav2 : <span id="{uniqueID}_nav">?</span></p>
+			<p>But : <span id="{uniqueID}_goal">?</span></p>
+			<p>Capteurs : <span id="{uniqueID}_sensors">?</span></p>
+			<p>Sante : <span id="{uniqueID}_health">?</span></p>
+			<ul id="{uniqueID}_errors" style="margin:4px 0 0 0; padding-left:1.2em; color:#e0a54a;"></ul>
+		</div>
+
+		<hr class="dark_hr"/>
+
+		<p style="color:#b4b4b4;">Etat depuis /robot/state ; modes et sauvegarde via les services /mode_manager/*.
+		La pose initiale (LOCALIZATION) et les buts se posent sur la carte avec les widgets dedies.</p>
+
+		<hr class="dark_hr"/>
+
+		<button id="{uniqueID}_remove" class="delete_button" onclick="removeWidget('{uniqueID}')">Remove Widget</button>
+	</div>
+</div>

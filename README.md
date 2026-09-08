@@ -146,6 +146,18 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    le message est dans le journal du `planner_server` (« Failed to create
    plan »).
 
+5. **Interface web** (avec `nav:=true`) : `http://alidade.local:5000`, depuis
+   un téléphone ou le poste. C'est [Vizanti](https://github.com/MoffKalast/vizanti)
+   (branche ros2, cloné à un commit épinglé par `system/sources.sh` à côté
+   d'`alidade_ros2`, servi par le robot, rosbridge sur le port 5001) avec un
+   profil opérateur (`alidade_ui/config/operator.json`) : widget **Alidade**
+   (mode et sous-état, boutons de mode, choix et sauvegarde de carte,
+   localisation, nav2, capteurs, santé), carte, scan, TF, pose initiale,
+   but, joystick sur `/cmd_vel_smoothed`, caméra, diagnostics. Le widget
+   Alidade vit dans `alidade_ui/templates/alidade/` ; `sources.sh` le lie
+   dans le dossier `public` de Vizanti, seul endroit où le serveur cherche
+   ses templates.
+
 5. **Au boot** : `sudo systemctl enable --now alidade`. Les arguments du
    launch se règlent dans `/etc/default/alidade`. Journaux :
    `journalctl -u alidade -f`.
@@ -288,6 +300,12 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   `inactive`** ; avec `autostart:=false` (pile `nav:=true`) c'est le
   gestionnaire de modes qui le pilote, et désactivé il cesse bien de publier
   `map → odom` et `/map` (vérifié : 0 message en 5 s).
+- rosbridge coupe tout appel de service à 5 s : les services du gestionnaire
+  de modes répondent donc dès que la demande est acceptée (`set_mode`,
+  `save_map`) et la suite se lit dans `/robot/state` (`transitioning`,
+  `substate`). Vizanti découvre ses templates par un `os.walk` qui ne suit
+  pas les liens de dossiers : `sources.sh` crée un vrai dossier par widget et
+  y lie chaque fichier.
 - nav2 après une pause se relance par `RESUME`, pas `STARTUP` : ce dernier
   tente de reconfigurer des nœuds déjà configurés (« Unable to start
   transition 1 from current state inactive »).

@@ -1,0 +1,35 @@
+{
+  "navbar": [
+    { "type": "settings", "id": "settings_default" },
+    { "type": "rosbridge", "id": "rosbridge_default" },
+    { "type": "alidade", "id": "alidade_default" },
+    { "type": "grid", "id": "grid_default" },
+    { "type": "tf", "id": "tf_default" },
+    { "type": "map", "id": "map_default" },
+    { "type": "scan", "id": "scan_default" },
+    { "type": "initialpose", "id": "initialpose_default" },
+    { "type": "simplegoal", "id": "simplegoal_default" },
+    { "type": "teleop", "id": "teleop_default" },
+    { "type": "compressedimage", "id": "camera_default" },
+    { "type": "diagnostics", "id": "diagnostics_default" }
+  ],
+  "uid": 0,
+  "view": { "center": { "x": 0, "y": 0 }, "scale": 50 },
+
+  "settings_default": { "fixed_frame": "odom", "background_color": "#10171d" },
+  "grid_default": { "size": 1.0, "thickness": 1, "colour": "#2b3843", "colour_sub": "#1f2a33",
+                    "autoscale": "Off", "subdivisions": 1, "frame": "" },
+  "tf_default": { "show_names": false, "show_axes": true, "show_lines": false, "scale": 1.0,
+                  "frame_visibility": {} },
+  "map_default": { "topic": "/map", "opacity": 0.85, "colour_scheme": 0, "throttle": 1000,
+                   "use_timestamp": false },
+  "scan_default": { "topic": "/scan", "opacity": 1.0, "thickness": 3, "color": "#4cc3d9", "throttle": 200 },
+  "initialpose_default": { "topic": "/initialpose" },
+  "simplegoal_default": { "topic": "/goal_pose" },
+  "teleop_default": { "topic": "/cmd_vel_smoothed",
+                      "typedict": { "/cmd_vel_smoothed": "geometry_msgs/msg/Twist" },
+                      "joy_offset_x": 0, "joy_offset_y": 0, "opacity": 0.6, "color": "#0b7285" },
+  "camera_default": { "topic": "/camera/image/compressed", "img_offset_x": 0, "img_offset_y": 0,
+                      "throttle": 200, "opacity": 1.0, "width": 30, "rotation": 0 },
+  "diagnostics_default": { "topic": "/diagnostics_agg", "throttle": 1000, "opened": [] }
+}

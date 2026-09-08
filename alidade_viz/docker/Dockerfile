@@ -27,6 +27,9 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
       ros-jazzy-diagnostic-aggregator \
       ros-jazzy-rqt-robot-monitor \
       python3-psutil \
+      ros-jazzy-rosbridge-suite \
+      python3-flask \
+      python3-waitress \
       ros-jazzy-teleop-twist-keyboard \
       python3-serial \
       python3-yaml \

@@ -19,6 +19,9 @@ echo "== paquets apt"
 apt-get update
 grep -vE '^\s*(#|$)' "$HERE/apt-packages.txt" | xargs apt-get install -y --no-install-recommends
 
+echo "== depots tiers epingles (Vizanti...) dans $WORKSPACE/src"
+sudo -u "$USER_NAME" bash "$HERE/sources.sh" "$WORKSPACE"
+
 echo "== droits serie et video pour $USER_NAME"
 usermod -aG dialout,video "$USER_NAME"
 
@@ -33,6 +36,8 @@ sed -e "s|@USER@|$USER_NAME|g" -e "s|@WORKSPACE@|$WORKSPACE|g" \
 if [ ! -f /etc/default/alidade ]; then
   cat > /etc/default/alidade <<'DEFAULTS'
 # Arguments passes a robot.launch.py par le service alidade.
+# nav:=true charge la pile autonome complete, gestionnaire de modes en IDLE ;
+# ajouter mode:=MAPPING (ou LOCALIZATION) pour demarrer directement dedans.
 ALIDADE_LAUNCH_ARGS="nav:=true"
 # Pairs DDS (voir system/env/alidade_env.sh) ; a renseigner si les noms .local ne suffisent pas.
 #ALIDADE_DEV_HOST=portable.local
