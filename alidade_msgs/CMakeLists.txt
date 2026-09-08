@@ -8,6 +8,9 @@ find_package(builtin_interfaces REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/RobotState.msg"
+  "srv/SetMode.srv"
+  "srv/SaveMap.srv"
+  "srv/ListMaps.srv"
   DEPENDENCIES std_msgs builtin_interfaces
 )
 

@@ -1,0 +1,9 @@
+# Sauvegarde la carte en cours (mode MAPPING ou EXPLORATION) sous
+# ~/alidade_maps/<name>/ : map.yaml + map.pgm pour map_server, et le
+# posegraph de slam_toolbox pour reprendre une cartographie. Un nom vide
+# prend l'horodatage.
+string name
+---
+bool ok
+string message
+string path

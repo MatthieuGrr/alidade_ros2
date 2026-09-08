@@ -9,7 +9,9 @@
 # l'empreinte deborde du cercle de collision. base_footprint est au centre
 # instantane de rotation, la bonne reference pour un differentiel.
 #
-# Pas de map_server ni d'amcl : slam_toolbox fournit map -> odom.
+# map -> odom vient soit de slam_toolbox (MAPPING), soit d'amcl sur une carte
+# servie par map_server (LOCALIZATION) ; le gestionnaire de modes n'en active
+# qu'un a la fois et ne demarre nav2 qu'une fois ce repere present.
 
 bt_navigator:
   ros__parameters:
@@ -211,3 +213,64 @@ collision_monitor:
       type: "scan"
       topic: "scan"
       enabled: true
+
+# Localisation sur carte connue. Le nombre de particules est modeste : un
+# scan de 360 points a 10 Hz dans une piece de 6 m converge vite, et le Pi
+# n'a pas a porter 5000 particules. Les alpha (bruit d'odometrie) sont bas
+# parce que l'odometrie est calibree au LiDAR (alidade_v1.yaml) ; les monter
+# si AMCL decroche en rotation rapide.
+amcl:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    base_frame_id: base_footprint
+    odom_frame_id: odom
+    global_frame_id: map
+    scan_topic: /scan
+    robot_model_type: "nav2_amcl::DifferentialMotionModel"
+    alpha1: 0.1
+    alpha2: 0.1
+    alpha3: 0.15
+    alpha4: 0.1
+    alpha5: 0.1
+    laser_model_type: likelihood_field
+    laser_max_range: ${lidar.range_max}
+    laser_min_range: 0.15
+    laser_likelihood_max_dist: 2.0
+    max_beams: 60
+    z_hit: 0.7
+    z_rand: 0.3
+    sigma_hit: 0.1
+    min_particles: 300
+    max_particles: 1500
+    pf_err: 0.05
+    pf_z: 0.99
+    update_min_d: 0.05
+    update_min_a: 0.10
+    resample_interval: 1
+    recovery_alpha_slow: 0.001
+    recovery_alpha_fast: 0.1
+    transform_tolerance: 0.3
+    tf_broadcast: true
+    # La pose initiale vient de l'interface (/initialpose), jamais d'ici.
+    set_initial_pose: false
+    always_reset_initial_pose: false
+    first_map_only: false
+
+# Sert la carte choisie a AMCL et a la costmap globale. yaml_filename est
+# vide au lancement : le gestionnaire de modes le renseigne avant de
+# configurer, ou passe par load_map une fois actif.
+map_server:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    yaml_filename: ""
+    topic_name: map
+    frame_id: map
+
+# Sauvegarde a la demande (service /map_saver/save_map), toujours actif.
+map_saver:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    save_map_timeout: 5.0
+    free_thresh_default: 0.25
+    occupied_thresh_default: 0.65
+    map_subscribe_transient_local: true

@@ -1,0 +1,4 @@
+# Cartes disponibles dans ~/alidade_maps (un dossier par carte, avec map.yaml).
+---
+string[] names
+string current

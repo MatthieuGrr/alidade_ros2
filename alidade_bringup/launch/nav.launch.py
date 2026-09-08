@@ -31,6 +31,7 @@ MANAGED = [
 def setup(context):
     hw = params.load_revision(context.launch_configurations['hardware_revision'])
     use_sim_time = params.as_bool(context.launch_configurations['use_sim_time'])
+    autostart = params.as_bool(context.launch_configurations['autostart'])
     config = params.render_config('nav2.yaml', hw, use_sim_time)
 
     # Les noeuds nav2 publient sur /tf absolu ; on les ramene au topic relatif
@@ -51,7 +52,9 @@ def setup(context):
              remappings=remap, **common),
         Node(package='nav2_lifecycle_manager', executable='lifecycle_manager',
              name='lifecycle_manager_navigation', output='screen',
-             parameters=[{'use_sim_time': use_sim_time, 'autostart': True,
+             # Sans autostart, c'est le gestionnaire de modes qui appelle
+             # STARTUP/PAUSE : nav2 ne peut pas vivre sans repere map.
+             parameters=[{'use_sim_time': use_sim_time, 'autostart': autostart,
                           'node_names': MANAGED}]),
         # nav2 (Jazzy) sort du Twist ; diff_drive_controller n'accepte que du
         # TwistStamped, et aucun des deux n'expose de parametre pour ceder.
@@ -67,5 +70,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('hardware_revision', default_value='v1'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
+        DeclareLaunchArgument('autostart', default_value='true',
+                              description='le lifecycle manager active nav2 seul ; false : gestionnaire de modes'),
         OpaqueFunction(function=setup),
     ])

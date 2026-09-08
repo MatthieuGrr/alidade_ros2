@@ -120,13 +120,31 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    ```
    ou au clavier : `ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p stamped:=true -r cmd_vel:=/diff_drive_controller/cmd_vel`.
 
-3. **Cartographie** : `robot.launch.py slam:=true`, puis rviz sur le poste
-   (`./alidade_viz/docker/run.sh rviz slam`).
+3. **Cartographie seule** : `robot.launch.py slam:=true`, puis rviz sur le
+   poste (`./alidade_viz/docker/run.sh rviz slam`).
 
-4. **Navigation** : `robot.launch.py nav:=true` et l'outil « 2D Goal Pose »
-   de rviz (`run.sh rviz nav`). Un but posé sur un obstacle échoue en
-   silence côté rviz ; le message est dans le journal du `planner_server`
-   (« Failed to create plan »).
+4. **Pile autonome et modes** : `robot.launch.py nav:=true` charge tout
+   (slam_toolbox, map_server, amcl, map_saver, nav2) sans rien activer, et
+   le **gestionnaire de modes** décide. Il démarre en `IDLE` (ou
+   `mode:=MAPPING`) et expose :
+   ```bash
+   ros2 topic echo /robot/state                                   # mode, localisation, nav2, santé
+   ros2 service call /mode_manager/set_mode alidade_msgs/srv/SetMode "{mode: 2}"                    # MAPPING
+   ros2 service call /mode_manager/save_map alidade_msgs/srv/SaveMap "{name: salon}"
+   ros2 service call /mode_manager/list_maps alidade_msgs/srv/ListMaps "{}"
+   ros2 service call /mode_manager/set_mode alidade_msgs/srv/SetMode "{mode: 3, map_name: salon}"   # LOCALIZATION
+   ros2 service call /mode_manager/set_mode alidade_msgs/srv/SetMode "{mode: 0}"                    # IDLE
+   ```
+   Modes : `IDLE` 0, `TELEOP` 1, `MAPPING` 2 (slam_toolbox), `LOCALIZATION` 3
+   (amcl sur une carte de `~/alidade_maps/<nom>/`, pose initiale à donner
+   sur `/initialpose`), `EXPLORATION` 4 et `DOCKING` 5 (réservés). Une seule
+   source de `map → odom` à la fois, et nav2 ne tourne que quand ce repère
+   existe dans un mode qui navigue : sans cette règle sa costmap globale
+   expire à l'activation et son lifecycle manager abandonne pour de bon.
+   La sauvegarde écrit `map.pgm` + `map.yaml` (map_server) et le posegraph
+   de slam_toolbox. Un but posé sur un obstacle échoue en silence côté rviz ;
+   le message est dans le journal du `planner_server` (« Failed to create
+   plan »).
 
 5. **Au boot** : `sudo systemctl enable --now alidade`. Les arguments du
    launch se règlent dans `/etc/default/alidade`. Journaux :
@@ -266,7 +284,13 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   du `Twist`. `cmd_vel_stamper.py` fait le joint. `teleop_twist_keyboard`
   prend `-p stamped:=true`.
 - `slam_toolbox` est un nœud lifecycle sans autostart : `slam.launch.py`
-  envoie configure puis activate.
+  envoie configure puis activate, et **ré-active à chaque passage par
+  `inactive`** ; avec `autostart:=false` (pile `nav:=true`) c'est le
+  gestionnaire de modes qui le pilote, et désactivé il cesse bien de publier
+  `map → odom` et `/map` (vérifié : 0 message en 5 s).
+- nav2 après une pause se relance par `RESUME`, pas `STARTUP` : ce dernier
+  tente de reconfigurer des nœuds déjà configurés (« Unable to start
+  transition 1 from current state inactive »).
 - nav2 est lancé à la main (six nœuds), pas via `navigation_launch.py` dont
   le `docking_server` et le `waypoint_follower` font tomber tout le bringup.
 - Les spawners ont `--switch-timeout 60` : sinon un controller_manager lent

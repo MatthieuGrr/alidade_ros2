@@ -1,0 +1,8 @@
+# Demande de changement de mode au gestionnaire (constantes dans RobotState).
+# map_name n'est lu que pour LOCALIZATION : la carte a charger. La reponse
+# arrive quand la transition est terminee ou refusee, avec le motif.
+uint8 mode
+string map_name
+---
+bool ok
+string message

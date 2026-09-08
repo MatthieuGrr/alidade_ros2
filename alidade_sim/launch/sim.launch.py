@@ -24,6 +24,7 @@ def setup(context):
     revision = context.launch_configurations['hardware_revision']
     slam = params.as_bool(context.launch_configurations['slam'])
     nav = params.as_bool(context.launch_configurations['nav'])
+    mode = context.launch_configurations['mode']
     headless = params.as_bool(context.launch_configurations['headless'])
     world = context.launch_configurations['world']
     use_sim_time = True
@@ -82,18 +83,9 @@ def setup(context):
         actions.after(spawn, chain),
         actions.include('telemetry.launch.py', hardware_revision=revision, use_sim_time=use_sim_time),
     ]
-    if slam or nav:
-        # Le SLAM ne demarre qu'une fois l'odometrie disponible : sans
-        # odom -> base_footprint, ses premiers scans partiraient a la poubelle.
-        launched.append(actions.after(last_spawner, [
-            actions.include('slam.launch.py', hardware_revision=revision, use_sim_time=use_sim_time)]))
-    if nav:
-        # Meme barriere que sur le robot reel : nav2 attend le premier scan.
-        # Instantane ici, mais la chaine reste identique des deux cotes.
-        gate = actions.scan_gate(use_sim_time)
-        launched.append(actions.after(last_spawner, [gate]))
-        launched.append(actions.after(gate, [
-            actions.include('nav.launch.py', hardware_revision=revision, use_sim_time=use_sim_time)]))
+    # Meme enchainement que sur le robot reel (voir actions.autonomy) : le
+    # SLAM apres l'odometrie, nav2 apres le premier scan -- instantane ici.
+    launched += actions.autonomy(revision, use_sim_time, last_spawner, slam=slam, nav=nav, mode=mode)
     return launched
 
 
@@ -102,7 +94,10 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('hardware_revision', default_value='v1'),
         DeclareLaunchArgument('slam', default_value='false'),
-        DeclareLaunchArgument('nav', default_value='false', description='navigation nav2 (implique slam)'),
+        DeclareLaunchArgument('nav', default_value='false',
+                              description='pile autonome complete : SLAM, AMCL, nav2 et gestionnaire de modes'),
+        DeclareLaunchArgument('mode', default_value='IDLE',
+                              description='mode initial du gestionnaire (IDLE, MAPPING, LOCALIZATION...)'),
         DeclareLaunchArgument('headless', default_value='false', description='serveur Gazebo seul'),
         DeclareLaunchArgument('world', default_value=default_world,
                               description='empty.sdf ne contient pas gz-sim-sensors-system : le LiDAR y resterait muet'),

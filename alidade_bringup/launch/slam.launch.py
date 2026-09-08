@@ -19,6 +19,7 @@ from alidade_bringup import params
 def setup(context):
     hw = params.load_revision(context.launch_configurations['hardware_revision'])
     use_sim_time = params.as_bool(context.launch_configurations['use_sim_time'])
+    autostart = params.as_bool(context.launch_configurations['autostart'])
     config = params.render_config('slam.yaml', hw, use_sim_time)
 
     slam = LifecycleNode(
@@ -26,6 +27,12 @@ def setup(context):
         name='slam_toolbox', namespace='', output='screen',
         parameters=[config, {'use_sim_time': use_sim_time}],
     )
+
+    # Sans autostart, le noeud reste 'unconfigured' et c'est un autre (le
+    # gestionnaire de modes) qui le pilote ; surtout pas de handler qui
+    # reactiverait dans son dos a chaque passage par 'inactive'.
+    if not autostart:
+        return [slam]
 
     def transition(transition_id):
         return EmitEvent(event=ChangeState(
@@ -45,5 +52,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('hardware_revision', default_value='v1'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
+        DeclareLaunchArgument('autostart', default_value='true',
+                              description='configure puis active le noeud ; false : laisse un pilote externe le faire'),
         OpaqueFunction(function=setup),
     ])

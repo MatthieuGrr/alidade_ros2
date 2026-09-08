@@ -75,6 +75,39 @@ def scan_gate(use_sim_time: bool) -> Node:
     )
 
 
+def mode_manager(use_sim_time: bool, mode: str) -> Node:
+    return Node(
+        package='alidade_bringup', executable='mode_manager.py', name='mode_manager',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time, 'initial_mode': mode}],
+    )
+
+
+def autonomy(revision: str, use_sim_time: bool, last_spawner, *, slam: bool, nav: bool, mode: str) -> list:
+    """Ce qui vient apres les controleurs, identique sur le robot et en simulation.
+
+    slam seul : slam_toolbox autonome, actif des le depart (cartographie rapide,
+    sans gestionnaire). nav : tout est charge mais inactif -- slam_toolbox,
+    map_server, amcl, map_saver -- et le gestionnaire de modes decide ; nav2
+    n'est lance qu'apres le premier scan et reste en pause tant qu'aucun
+    repere map n'existe.
+    """
+    common = dict(hardware_revision=revision, use_sim_time=use_sim_time)
+    launched = []
+    if nav:
+        launched.append(after(last_spawner, [
+            include('slam.launch.py', autostart=False, **common),
+            include('localization.launch.py', **common),
+            mode_manager(use_sim_time, mode),
+        ]))
+        gate = scan_gate(use_sim_time)
+        launched.append(after(last_spawner, [gate]))
+        launched.append(after(gate, [include('nav.launch.py', autostart=False, **common)]))
+    elif slam:
+        launched.append(after(last_spawner, [include('slam.launch.py', **common)]))
+    return launched
+
+
 def include(launch_file: str, **arguments) -> IncludeLaunchDescription:
     return IncludeLaunchDescription(
         PythonLaunchDescriptionSource(str(bringup_share() / 'launch' / launch_file)),

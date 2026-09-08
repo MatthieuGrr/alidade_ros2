@@ -1,14 +1,17 @@
 """Pile complete du robot reel.
 
     ros2 launch alidade_bringup robot.launch.py                # base + LiDAR + IMU
-    ros2 launch alidade_bringup robot.launch.py slam:=true     # + cartographie
-    ros2 launch alidade_bringup robot.launch.py nav:=true      # + navigation (implique slam)
+    ros2 launch alidade_bringup robot.launch.py slam:=true     # + cartographie seule
+    ros2 launch alidade_bringup robot.launch.py nav:=true      # + pile autonome et gestionnaire de modes
+    ros2 launch alidade_bringup robot.launch.py nav:=true mode:=MAPPING
     ros2 launch alidade_bringup robot.launch.py mock:=true     # sans Pico (mock_components)
 
 Ordre de demarrage : robot_state_publisher et controller_manager, puis les
-trois controleurs l'un apres l'autre, puis le SLAM une fois l'odometrie
-disponible, et la navigation une fois le premier scan recu. Le LiDAR et la
-camera demarrent en parallele, ils ne dependent de rien -- mais tout le monde
+trois controleurs l'un apres l'autre, puis (nav:=true) le SLAM, la
+localisation et le gestionnaire de modes une fois l'odometrie disponible, et
+nav2 une fois le premier scan recu -- nav2 restant en pause tant que le
+gestionnaire n'a pas de repere map a lui donner. Le LiDAR et la camera
+demarrent en parallele, ils ne dependent de rien -- mais tout le monde
 depend du LiDAR.
 """
 from launch import LaunchDescription
@@ -25,6 +28,7 @@ def setup(context):
     nav = params.as_bool(context.launch_configurations['nav'])
     lidar = params.as_bool(context.launch_configurations['lidar'])
     camera = params.as_bool(context.launch_configurations['camera'])
+    mode = context.launch_configurations['mode']
     use_sim_time = params.as_bool(context.launch_configurations['use_sim_time'])
     pico_port = context.launch_configurations['pico_port']
 
@@ -58,17 +62,7 @@ def setup(context):
         launched.append(actions.include('camera.launch.py',
                                         hardware_revision=revision, use_sim_time=use_sim_time))
 
-    # nav2 a besoin de map -> odom : activer nav sans slam n'aurait pas de sens.
-    if slam or nav:
-        launched.append(actions.after(last_spawner, [
-            actions.include('slam.launch.py', hardware_revision=revision, use_sim_time=use_sim_time)]))
-    # ... et d'un premier scan, sinon son bringup expire et n'est jamais retente.
-    if nav:
-        gate = actions.scan_gate(use_sim_time)
-        launched.append(actions.after(last_spawner, [gate]))
-        launched.append(actions.after(gate, [
-            actions.include('nav.launch.py', hardware_revision=revision, use_sim_time=use_sim_time)]))
-
+    launched += actions.autonomy(revision, use_sim_time, last_spawner, slam=slam, nav=nav, mode=mode)
     return launched
 
 
@@ -78,9 +72,12 @@ def generate_launch_description():
                               description='selectionne alidade_<rev>.yaml'),
         DeclareLaunchArgument('mock', default_value='false',
                               description='mock_components a la place du Pico'),
-        DeclareLaunchArgument('slam', default_value='false'),
+        DeclareLaunchArgument('slam', default_value='false',
+                              description='cartographie seule, slam_toolbox actif des le depart'),
         DeclareLaunchArgument('nav', default_value='false',
-                              description='navigation nav2 (implique slam)'),
+                              description='pile autonome complete : SLAM, AMCL, nav2 et gestionnaire de modes'),
+        DeclareLaunchArgument('mode', default_value='IDLE',
+                              description='mode initial du gestionnaire (IDLE, MAPPING, LOCALIZATION...)'),
         DeclareLaunchArgument('lidar', default_value='true',
                               description='demarre rplidar_ros'),
         DeclareLaunchArgument('camera', default_value='true',
