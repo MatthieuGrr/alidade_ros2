@@ -45,7 +45,31 @@ def test_back_to_idle_drops_localization():
     ctx = m.Context(current=m.LOCALIZATION, maps=['a'], current_map='a', amcl_active=True)
     assert steps(m.plan(ctx, m.IDLE)) == [('nav', 'cancel'), ('amcl', 'deactivate')]
     ctx = m.Context(current=m.MAPPING, slam_active=True)
-    assert steps(m.plan(ctx, m.TELEOP)) == [('nav', 'cancel'), ('slam', 'deactivate')]
+    assert steps(m.plan(ctx, m.IDLE)) == [('nav', 'cancel'), ('slam', 'deactivate')]
+
+
+def test_teleop_preserves_localization():
+    """Conduire a la main ne doit rien detruire : la carte en cours survit a un
+    aller-retour par TELEOP, sinon l'exploration repart de zero."""
+    ctx = m.Context(current=m.MAPPING, slam_active=True)
+    assert steps(m.plan(ctx, m.TELEOP)) == [('nav', 'cancel')]
+
+    driving = m.Context(current=m.TELEOP, slam_active=True)
+    assert steps(m.plan(driving, m.MAPPING)) == [('nav', 'cancel')]
+    assert steps(m.plan(driving, m.EXPLORATION)) == [('nav', 'cancel'), ('explore', 'start')]
+
+    # Depuis l'exploration : on arrete l'explorateur, on garde la carte.
+    exploring = m.Context(current=m.EXPLORATION, slam_active=True)
+    assert steps(m.plan(exploring, m.TELEOP)) == [('explore', 'stop'), ('nav', 'cancel')]
+
+    # Idem avec amcl.
+    localized = m.Context(current=m.LOCALIZATION, maps=['a'], current_map='a', amcl_active=True)
+    assert steps(m.plan(localized, m.TELEOP)) == [('nav', 'cancel')]
+    back = m.Context(current=m.TELEOP, maps=['a'], current_map='a', amcl_active=True)
+    assert steps(m.plan(back, m.LOCALIZATION, 'a')) == [('nav', 'cancel')]
+
+    # Mais TELEOP -> IDLE libere bien tout.
+    assert steps(m.plan(driving, m.IDLE)) == [('nav', 'cancel'), ('slam', 'deactivate')]
 
 
 def test_reserved_modes_are_refused():

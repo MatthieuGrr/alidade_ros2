@@ -199,8 +199,8 @@ class ModeManager(Node):
                 'pico': ok('/Alidade/Pico'),
             }
 
-    def localized(self, mode: int | None = None) -> bool:
-        """Le repere map existe et nav2 peut tourner.
+    def localized(self) -> bool:
+        """Le repere map existe et la planification peut tourner.
 
         En cartographie, slam_toolbox republie /map a map_update_interval tant
         qu'il traite des scans, et publie map -> odom en meme temps : une carte
@@ -209,11 +209,12 @@ class ModeManager(Node):
         elle, continue : c'est donc un drapeau depuis la premiere pose, remis a
         zero a chaque activation.
         """
+        # Selon la source ACTIVE, pas selon le mode : TELEOP garde celle qui
+        # tournait, et l'etat publie doit dire la verite pendant ce temps.
         with self.lock:
-            mode = self.mode if mode is None else mode
-            if mode in modes.SLAM_MODES:
+            if self.slam_active:
                 return time.monotonic() - self.last_map < self.map_fresh_s
-            if mode in modes.AMCL_MODES:
+            if self.amcl_active:
                 return self.amcl_converged
             return False
 
@@ -344,6 +345,8 @@ class ModeManager(Node):
             if target == 'nav' and action == 'cancel':
                 self.step_nav_cancel()
             elif target == 'slam' and action == 'fresh':
+                with self.lock:
+                    self.last_map = 0.0   # la carte de la session precedente ne prouve rien
                 self.lc_fresh('slam_toolbox')
                 self.set_flag('slam_active', True)
             elif target == 'slam' and action == 'deactivate':
@@ -430,8 +433,8 @@ class ModeManager(Node):
                 else:
                     self.fall_back(str(why))
                 return
-            # Selon le mode VISE, et hors verrou : localized() le prend aussi.
-            localized = self.localized(target)
+            # Hors verrou : localized() le prend aussi.
+            localized = self.localized()
             with self.lock:
                 self.mode = target
                 self.transitioning = False
@@ -612,10 +615,10 @@ class ModeManager(Node):
             msg.mode_name = modes.name_of(self.mode)
             msg.substate = self.substate
             msg.transitioning = self.transitioning
-            if self.mode in modes.SLAM_MODES:
+            if self.slam_active:
                 msg.localization_source = 'slam_toolbox'
                 msg.localization_quality = 1.0 if localized else 0.0
-            elif self.mode in modes.AMCL_MODES:
+            elif self.amcl_active:
                 msg.localization_source = 'amcl'
                 sigma = self.amcl_sigma
                 msg.localization_quality = max(0.0, min(1.0, 1.0 - sigma / 0.5)) if sigma is not None and localized else 0.0

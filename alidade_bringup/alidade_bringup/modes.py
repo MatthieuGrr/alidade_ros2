@@ -9,9 +9,13 @@ Regles :
   - une seule source de map -> odom a la fois : slam_toolbox (MAPPING,
     EXPLORATION) ou amcl (LOCALIZATION, DOCKING) ;
   - LOCALIZATION exige une carte connue ;
-  - nav2 n'est pas pilote ici : le gestionnaire le demarre des que map -> odom
-    existe dans un mode qui navigue, et le met en pause sinon
-    (voir mode_manager.py, reconciliation) ;
+  - la PLANIFICATION nav2 n'est pas pilotee ici : le gestionnaire la demarre
+    des que map -> odom existe dans un mode qui navigue, et la met en pause
+    sinon (voir mode_manager.py, reconciliation). La chaine de securite
+    (lissage et moniteur de collision), elle, tourne toujours : elle protege
+    aussi le pilotage manuel ;
+  - TELEOP ne touche pas a la localisation : on peut conduire a la main au
+    milieu d'une cartographie et y revenir sans perdre la carte ;
   - EXPLORATION = MAPPING plus l'explorateur de frontieres, qui pousse ses
     propres buts nav2 ; on l'arrete avant de quitter le mode ;
   - DOCKING est reserve : phase 6 de la feuille de route.
@@ -29,6 +33,10 @@ BY_NAME = {v: k for k, v in NAMES.items()}
 SLAM_MODES = {MAPPING, EXPLORATION}
 AMCL_MODES = {LOCALIZATION, DOCKING}
 NAVIGATING_MODES = SLAM_MODES | AMCL_MODES
+# Modes qui gardent la source de localisation en cours quelle qu'elle soit :
+# conduire a la main pendant une cartographie est un usage normal, et revenir
+# a MAPPING ou EXPLORATION doit reprendre la carte, pas repartir de zero.
+PRESERVING_MODES = {TELEOP}
 IMPLEMENTED = {IDLE, TELEOP, MAPPING, LOCALIZATION, EXPLORATION}
 
 
@@ -89,10 +97,12 @@ def plan(ctx: Context, target: int, map_name: str = '') -> Plan:
     # Tout changement commence par lacher le but en cours.
     steps.append(('nav', 'cancel', ''))
 
-    # Quitter la source de localisation qui ne sert plus.
-    if ctx.slam_active and target not in SLAM_MODES:
+    # Quitter la source de localisation qui ne sert plus -- sauf vers un mode
+    # qui la preserve (TELEOP).
+    keep = target in PRESERVING_MODES
+    if ctx.slam_active and not (target in SLAM_MODES or keep):
         steps.append(('slam', 'deactivate', ''))
-    if ctx.amcl_active and (target not in AMCL_MODES or not same_map):
+    if ctx.amcl_active and not ((target in AMCL_MODES and same_map) or keep):
         steps.append(('amcl', 'deactivate', ''))
 
     # Entrer dans la nouvelle. L'exploration continue la carte en cours si le

@@ -135,6 +135,13 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    ros2 service call /mode_manager/set_mode alidade_msgs/srv/SetMode "{mode: 3, map_name: salon}"   # LOCALIZATION
    ros2 service call /mode_manager/set_mode alidade_msgs/srv/SetMode "{mode: 0}"                    # IDLE
    ```
+   **Pilotage manuel** : le joystick publie sur `/cmd_vel_nav`, jamais sur
+   `/cmd_vel`. Toute commande passe alors par la même chaîne que la
+   navigation, lissage puis moniteur de collision. Ces deux nœuds forment un
+   groupe de cycle de vie séparé (`lifecycle_manager_safety`) qui démarre avec
+   la pile et n'est **jamais** mis en pause : sans cela, `TELEOP` mettait tout
+   nav2 en pause et plus personne n'écoutait `/cmd_vel_smoothed`.
+
    Modes : `IDLE` 0, `TELEOP` 1, `MAPPING` 2 (slam_toolbox), `LOCALIZATION` 3
    (amcl sur une carte de `~/alidade_maps/<nom>/`, pose initiale à donner
    sur `/initialpose`), `EXPLORATION` 4 (cartographie plus l'explorateur de
@@ -143,7 +150,9 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    pousse ses buts nav2, publie `/exploration_complete` quand il n'y a plus
    de frontière et rentre au point de départ ; le gestionnaire sauvegarde
    alors la carte sous `exploration_<date>` et repasse en `MAPPING`) et
-   `DOCKING` 5 (réservé). Une seule
+   `DOCKING` 5 (réservé). `TELEOP` **préserve** la source de localisation en
+   cours : conduire à la main au milieu d'une cartographie puis y revenir
+   reprend la même carte, et l'exploration repart où elle en était. Une seule
    source de `map → odom` à la fois, et nav2 ne tourne que quand ce repère
    existe dans un mode qui navigue : sans cette règle sa costmap globale
    expire à l'activation et son lifecycle manager abandonne pour de bon.
@@ -384,6 +393,14 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   640×480 en `rgb8` fait 900 ko, que CycloneDDS fragmente en centaines de
   datagrammes. En `best_effort`, un fragment perdu jette le message entier, et
   le compteur ne voyait **rien** passer alors que le flux tournait.
+- Le moniteur de collision utilise un polygone **`approach`** et non `stop` :
+  il projette l'empreinte le long de la commande reçue et ne freine que si
+  *cette* trajectoire touche quelque chose. Avec un `stop` circulaire, toute
+  commande était coupée dès qu'un point entrait dans le rayon, quel que soit
+  son sens — collé à une vitre que le LiDAR voit mal, le robot ne pouvait même
+  plus reculer. Vérifié : bloqué en avant à 0,005 m/s, dégagement arrière à
+  0,152 m/s. Une vitre reste invisible au LiDAR ; pour l'interdire vraiment il
+  faut un masque `keepout` (filtre de costmap nav2), pas encore en place.
 - Les seuils de diagnostic de `ros2_control` visent une boucle temps réel. Ici
   elle est cadencée par les trames USB du Pico : les moyennes sont excellentes
   (20 à 83 µs d'exécution pour 20 ms de cycle, périodicité 50,06 Hz ± 1,99),

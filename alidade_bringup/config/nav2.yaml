@@ -199,15 +199,27 @@ collision_monitor:
     source_timeout: 1.0
     base_shift_correction: true
     stop_pub_timeout: 2.0
-    polygons: ["PolygonStop"]
-    PolygonStop:
-      type: "circle"
-      # Rayon circonscrit plus une marge : en deca, le robot s'arrete.
-      radius: 0.22
-      action_type: "stop"
+    # « approach » plutot que « stop » : le moniteur projette l'empreinte le
+    # long de la commande recue et ne ralentit que si CETTE trajectoire touche
+    # quelque chose. Un arret circulaire coupait toute commande des qu'un point
+    # entrait dans les 22 cm, quel que soit son sens : colle a une baie vitree
+    # que le LiDAR voit mal, le robot ne pouvait meme plus reculer, et seul un
+    # redemarrage de l'exploration le liberait. Ici, commander l'ecart est
+    # toujours autorise : c'est ce qui rend le degagement possible au joystick.
+    polygons: ["FootprintApproach"]
+    FootprintApproach:
+      type: "polygon"
+      # Encombrement reel depuis base_footprint (0.209 x 0.217 m, boitier
+      # legerement decale) plus 1.5 cm de marge.
+      points: "[[0.12, 0.12], [0.12, -0.12], [-0.12, -0.12], [-0.12, 0.12]]"
+      action_type: "approach"
+      # A 0.30 m/s, 0.8 s de marge : le robot ralentit en approchant au lieu de
+      # se figer, et peut longer un mur de pres.
+      time_before_collision: 0.8
+      simulation_time_step: 0.05
       min_points: 4
       visualize: true
-      polygon_pub_topic: "polygon_stop"
+      polygon_pub_topic: "polygon_approach"
     observation_sources: ["scan"]
     scan:
       type: "scan"
