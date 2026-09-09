@@ -1,0 +1,27 @@
+# Cube cible du docking : 50 mm d'arete, chaque face portant un marqueur
+# DICT_4X4_50 de 40 mm de cote noir, numerote de 1 a 6.
+#
+# Repere du cube, convention ROS : x vers l'AVANT, y vers la GAUCHE, z vers le
+# HAUT. « L'avant » est la face 2, telle que le cube a ete decrit pose sur une
+# table. L'origine est au centre du cube, ce qui en fait le point a saisir.
+#
+# Chaque face est donnee par DEUX vecteurs unitaires dans ce repere plutot que
+# par une matrice de rotation : cela se relit sur le cube pose devant soi, et
+# une erreur de signe se voit. Ce sont exactement les axes du repere marqueur
+# d'OpenCV, dont le z sort du motif et le y pointe vers le haut du dessin :
+#
+#   normal : normale sortante de la face      = axe z du marqueur
+#   up     : direction du HAUT du motif       = axe y du marqueur
+#
+# L'axe x du marqueur s'en deduit par x = up ^ normal, et le centre de la face
+# vaut normal * edge/2. Le rendu de aruco_bench.py cube permet de verifier
+# l'ensemble d'un coup d'oeil.
+edge: 0.050
+marker_size: 0.040
+faces:
+  - {id: 1, nom: haut,     normal: [0.0, 0.0, 1.0],  up: [1.0, 0.0, 0.0]}
+  - {id: 2, nom: devant,   normal: [1.0, 0.0, 0.0],  up: [0.0, 0.0, 1.0]}
+  - {id: 3, nom: droite,   normal: [0.0, -1.0, 0.0], up: [0.0, 0.0, 1.0]}
+  - {id: 4, nom: derriere, normal: [-1.0, 0.0, 0.0], up: [0.0, 0.0, 1.0]}
+  - {id: 5, nom: gauche,   normal: [0.0, 1.0, 0.0],  up: [0.0, 0.0, 1.0]}
+  - {id: 6, nom: bas,      normal: [0.0, 0.0, -1.0], up: [1.0, 0.0, 0.0]}

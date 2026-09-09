@@ -21,6 +21,7 @@ if(BUILD_TESTING)
   ament_add_pytest_test(test_params test/test_params.py)
   ament_add_pytest_test(test_telemetry test/test_telemetry.py)
   ament_add_pytest_test(test_modes test/test_modes.py)
+  ament_add_pytest_test(test_cube test/test_cube.py)
 endif()
 
 ament_package()

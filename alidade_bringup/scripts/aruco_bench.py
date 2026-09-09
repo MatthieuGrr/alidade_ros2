@@ -4,6 +4,7 @@
     aruco_bench.py watch [duree]            # ce que le detecteur voit vraiment
     aruco_bench.py synth 1 0.50             # camera de synthese : marqueur 1 a 50 cm
     aruco_bench.py sweep                    # portee et justesse sur images parfaites
+    aruco_bench.py cube 0.40 35 20          # rend le cube et verifie sa geometrie
 
 'synth' publie /camera/image et /camera/camera_info comme le ferait la camera,
 ce qui permet de valider toute la chaine sans materiel : dictionnaire, taille
@@ -103,6 +104,123 @@ def cmd_sweep(args):
         print(f"    identifiant {mid} -> {got if got else 'NON DECODE'}")
 
 
+def load_cube():
+    """Description du cube (config/cube.yaml) et repere de chaque marqueur.
+
+    Rend, par identifiant, la rotation marqueur -> cube et le centre de la
+    face. Les colonnes de la rotation sont les axes du marqueur exprimes dans
+    le repere du cube, dans l'ordre x, y, z d'OpenCV.
+    """
+    import yaml
+    from alidade_bringup.params import bringup_share
+    spec = yaml.safe_load((bringup_share() / 'config' / 'cube.yaml').read_text())
+    faces = {}
+    for f in spec['faces']:
+        z = np.array(f['normal'], float)
+        y = np.array(f['up'], float)
+        x = np.cross(y, z)
+        rot = np.column_stack([x, y, z])
+        faces[f['id']] = (rot, z * spec['edge'] / 2.0, f['nom'])
+    return spec, faces
+
+
+def cube_corners(spec, faces, mid):
+    """Les 4 coins du marqueur `mid` dans le repere du cube, dans l'ordre
+    d'OpenCV : haut-gauche, haut-droit, bas-droit, bas-gauche."""
+    rot, centre, _ = faces[mid]
+    h = spec['marker_size'] / 2.0
+    local = np.array([[-h, h, 0], [h, h, 0], [h, -h, 0], [-h, -h, 0]], float)
+    return (rot @ local.T).T + centre
+
+
+def cmd_cube(args):
+    spec, faces = load_cube()
+    dic = dictionary()
+    k = np.array([[FX, 0, CX], [0, FX, CY], [0, 0, 1]], float)
+    dist = np.zeros(5)
+
+    # Pose imposee au cube : pose devant la camera, sa face avant tournee vers
+    # elle, puis pivote. Changement d'axes du repere cube (x avant, y gauche,
+    # z haut) vers le repere optique (x droite, y bas, z avant) : l'avant du
+    # cube regarde la camera (x -> -z), sa gauche apparait a droite de l'image
+    # (y -> x), son haut est en haut (z -> -y). A lacet nul, on voit donc la
+    # face 2, comme le robot la verra en approche.
+    base = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, -1.0], [-1.0, 0.0, 0.0]])
+    cy, sy = math.cos(math.radians(args.yaw)), math.sin(math.radians(args.yaw))
+    cp, sp = math.cos(math.radians(args.pitch)), math.sin(math.radians(args.pitch))
+    spin = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]]) @ \
+        np.array([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]])
+    rot_true = base @ spin
+    t_true = np.array([0.0, 0.0, args.distance])
+
+    scene = np.full((H, W), 210, np.uint8)
+    vues = []
+    for mid, (rot_f, centre, nom) in sorted(faces.items()):
+        normale_cam = rot_true @ (rot_f @ np.array([0.0, 0.0, 1.0]))
+        centre_cam = rot_true @ centre + t_true
+        if float(normale_cam @ centre_cam) >= 0:      # face tournee a l'oppose
+            continue
+        vues.append((mid, nom))
+        # La FACE entiere est plaquee d'un coup : le marqueur et sa marge
+        # blanche warpes ensemble, masques par le contour de la face. Masquer
+        # au contour du marqueur rognait son lisere noir exterieur d'un pixel,
+        # et un lisere rompu rend le marqueur indecodable -- panne bien plus
+        # difficile a lire que la vraie.
+        marge = int(round(200 * (spec['edge'] - spec['marker_size'])
+                          / (2 * spec['marker_size'])))
+        tag = cv2.copyMakeBorder(marker_image(dic, mid), marge, marge, marge, marge,
+                                 cv2.BORDER_CONSTANT, value=255)
+        n = tag.shape[0] - 1
+        src = np.float32([[0, 0], [n, 0], [n, n], [0, n]])
+        h = spec['edge'] / 2.0
+        face_local = np.array([[-h, h, 0], [h, h, 0], [h, -h, 0], [-h, -h, 0]], float)
+        face_pts = (rot_f @ face_local.T).T + centre
+        dst = cv2.projectPoints(face_pts, rot_true, t_true, k, dist)[0] \
+            .reshape(-1, 2).astype(np.float32)
+        warped = cv2.warpPerspective(tag, cv2.getPerspectiveTransform(src, dst), (W, H),
+                                     borderValue=255, flags=cv2.INTER_LINEAR)
+        mask = np.zeros((H, W), np.uint8)
+        cv2.fillConvexPoly(mask, dst.astype(np.int32), 255)
+        scene[mask > 0] = warped[mask > 0]
+
+    print(f"  cube a {args.distance:.2f} m, lacet {args.yaw:+.0f} deg, tangage {args.pitch:+.0f} deg")
+    print(f"  faces tournees vers la camera : {', '.join(f'{m} ({n})' for m, n in vues)}")
+
+    if hasattr(cv2.aruco, 'DetectorParameters_create'):
+        p = cv2.aruco.DetectorParameters_create()
+    else:
+        p = cv2.aruco.DetectorParameters()
+    p.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+    corners, ids, _ = cv2.aruco.detectMarkers(scene, dic, parameters=p)
+    trouves = sorted(ids.flatten().tolist()) if ids is not None else []
+    print(f"  marqueurs decodes            : {trouves if trouves else 'AUCUN'}")
+
+    out = '/tmp/cube_rendu.png'
+    cv2.imwrite(out, scene)
+    print(f"  rendu ecrit dans {out}")
+
+    if not trouves:
+        return 1
+    # PnP conjoint sur tous les coins vus : c'est lui qui met la table de
+    # geometrie a l'epreuve. Une face mal orientee ferait exploser l'erreur.
+    obj, img = [], []
+    for mid, quad in zip(ids.flatten().tolist(), corners):
+        obj.append(cube_corners(spec, faces, mid))
+        img.append(quad.reshape(-1, 2))
+    ok, rvec, tvec = cv2.solvePnP(np.vstack(obj).astype(np.float64),
+                                  np.vstack(img).astype(np.float64), k, dist,
+                                  flags=cv2.SOLVEPNP_ITERATIVE)
+    if not ok:
+        print("  resolution de pose impossible")
+        return 1
+    err_pos = float(np.linalg.norm(tvec.ravel() - t_true)) * 1000.0
+    rot_est = cv2.Rodrigues(rvec)[0]
+    err_ang = math.degrees(math.acos(
+        max(-1.0, min(1.0, (np.trace(rot_est.T @ rot_true) - 1.0) / 2.0))))
+    print(f"  pose du cube retrouvee       : erreur {err_pos:.1f} mm et {err_ang:.2f} deg")
+    return 0
+
+
 def cmd_synth(args):
     import rclpy
     from rclpy.node import Node
@@ -197,6 +315,12 @@ def main():
 
     p = sub.add_parser('sweep', help='portee et justesse, sans ROS')
     p.set_defaults(func=cmd_sweep)
+
+    c = sub.add_parser('cube', help='rend le cube et verifie sa geometrie')
+    c.add_argument('distance', nargs='?', type=float, default=0.40)
+    c.add_argument('yaw', nargs='?', type=float, default=35.0)
+    c.add_argument('pitch', nargs='?', type=float, default=20.0)
+    c.set_defaults(func=cmd_cube)
 
     args = ap.parse_args()
     return args.func(args) or 0

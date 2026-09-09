@@ -122,6 +122,7 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    ```bash
    ros2 run alidade_bringup aruco_bench.py watch      # identifiants, cadence, distances
    ros2 run alidade_bringup aruco_bench.py sweep      # portée et justesse, sans robot ni caméra
+   ros2 run alidade_bringup aruco_bench.py cube 0.40 35 20   # rend le cube, vérifie sa géométrie
    ros2 run rqt_image_view rqt_image_view /aruco_tracker/debug   # marqueurs entourés
    ```
    La **détection** ne dépend pas de la calibration, seulement les **poses** :
@@ -132,6 +133,15 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    caméra étant fixe et horizontale à 11,5 cm, le cube sort du champ par le
    bas quand l'avant du robot est à moins de ~23 cm : l'approche finale se
    fera à l'odométrie.
+
+   La géométrie du cube est dans `alidade_bringup/config/cube.yaml`, décrite
+   face par face (normale sortante et direction du haut du motif) plutôt que
+   par des matrices, pour se relire sur le cube posé devant soi ;
+   `test_cube.py` vérifie que chaque face définit bien un repère orthonormé
+   direct et que les six forment un cube. Précision de la pose du cube sur
+   images parfaites, par PnP conjoint sur toutes les faces vues : 2 mm à
+   0,40 m, 15 mm à 0,70 m, 44 mm à 1,00 m. Pour saisir un cube de 50 mm, il
+   faut donc s'en approcher à 40 cm ou moins avant de conclure à l'odométrie.
    Puis un mètre au sol :
    ```bash
    ros2 topic pub -r 20 /diff_drive_controller/cmd_vel geometry_msgs/msg/TwistStamped \
