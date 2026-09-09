@@ -134,6 +134,19 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    bas quand l'avant du robot est à moins de ~23 cm : l'approche finale se
    fera à l'odométrie.
 
+   **Vérifier que le support de caméra est d'aplomb.** L'URDF le suppose
+   horizontal, et une inclinaison ne se voit pas à l'image : elle se traduit
+   par une erreur de hauteur sur tout ce qu'on détecte. Poser le cube au sol
+   à ~50 cm, puis :
+   ```bash
+   ros2 run tf2_ros tf2_echo base_footprint marker_<id>
+   ```
+   La composante z doit valoir la demi-arête du cube, soit **25 mm**. Mesuré
+   sur le robot : 62 mm avec un support légèrement incliné, 21 mm une fois
+   redressé — et la stabilité de l'orientation passe au même moment d'une
+   amplitude de 20° à 3°. Un millimètre d'erreur à 43 cm vaut 0,13° de
+   dévers, la mesure est donc bien plus sensible que l'œil.
+
    La géométrie du cube est dans `alidade_bringup/config/cube.yaml`, décrite
    face par face (normale sortante et direction du haut du motif) plutôt que
    par des matrices, pour se relire sur le cube posé devant soi ;
@@ -423,6 +436,18 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   640×480 en `rgb8` fait 900 ko, que CycloneDDS fragmente en centaines de
   datagrammes. En `best_effort`, un fragment perdu jette le message entier, et
   le compteur ne voyait **rien** passer alors que le flux tournait.
+- La pose d'un marqueur plan **seul** est ambiguë : deux solutions PnP
+  presque équivalentes, entre lesquelles le détecteur bascule d'une image à
+  l'autre. Mesuré sur le cube immobile à 43 cm : distance stable à ±1,3 mm,
+  mais orientation oscillant sur 3° (et sur 20° quand le support de caméra
+  était de travers). La position d'un marqueur isolé est donc exploitable,
+  son orientation non — c'est l'argument pour combiner plusieurs faces.
+- La détection est très sensible au **contre-jour**. Face à une baie vitrée,
+  l'exposition automatique se règle sur la fenêtre et sous-expose la pièce :
+  taux de détection tombé à 23 % puis à zéro quand le soleil a tourné, contre
+  100 % après avoir simplement déplacé le robot dans une zone à éclairage
+  homogène. La compensation de contre-jour de la C920 **aggrave** les choses
+  (3,8 %). Déplacer le robot vaut mieux que régler la caméra.
 - `aruco_opencv` ne sait décrire que des **damiers plans** (`GridBoard` :
   `markers_x`, `markers_y`, `separation`), et son message `MarkerPose` ne
   porte qu'un identifiant et une pose, pas les coins détectés. Un cube, dont
