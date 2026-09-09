@@ -104,7 +104,16 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
 
    **Calibration de la caméra**, une fois, sur le flux droit (le nœud de
    retournement recopie le `camera_info` sans corriger le point principal,
-   donc on calibre ce qu'on consomme), mise au point fixe comme en marche :
+   donc on calibre ce qu'on consomme), mise au point fixe comme en marche.
+   La mire se génère aux cotes exactes — damier plutôt que ChArUco, dont les
+   marqueurs 4x4 seraient confondus avec les faces du cube :
+   ```bash
+   ./alidade_description/scripts/make_checkerboard.py mire.pdf   # A4 paysage, cases de 25 mm
+   ```
+   L'imprimer **à 100 %**, sans « ajuster à la page », vérifier au réglet que
+   les 9 cases font bien 225 mm entre les deux traits, et la coller sur un
+   support rigide : une feuille qui gondole fausse la distorsion sans que
+   rien ne le signale. Puis :
    ```bash
    ros2 run camera_calibration cameracalibrator --size 8x6 --square 0.025 \
        --no-service-check image:=/camera/image
