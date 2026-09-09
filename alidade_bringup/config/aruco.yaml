@@ -1,0 +1,68 @@
+# Detection de marqueurs ArUco (aruco_opencv). Gabarit rendu au lancement.
+#
+# Le noeud est COMPOSE dans le conteneur camera (camera.launch.py) : il lit
+# l'image redressee en intra-processus, sans copie ni serialisation. Hors
+# conteneur, il faudrait faire transiter 13.8 Mo/s sur la boucle locale, et
+# surtout jamais en best_effort : une image de 900 ko est fragmentee en
+# centaines de datagrammes, et un seul fragment perdu jette le message entier
+# (voir README, pieges connus).
+#
+# ATTENTION. La DETECTION des marqueurs ne depend pas de la calibration : elle
+# ne fait que chercher des carres noirs et decoder leur damier. Les POSES, en
+# revanche, en dependent entierement. Tant que camera_v1.yaml porte des
+# intrinseques nominales, /aruco_detections et les TF marker_<id> ont un biais
+# d'echelle et ignorent la distorsion : bons pour verifier qu'on voit le cube
+# et a quelle distance, pas pour aller le chercher.
+aruco_tracker:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+
+    # Flux redresse. image_transport en deduit le camera_info en remplacant le
+    # dernier element du chemin : /camera/image -> /camera/camera_info.
+    # S'y abonner reveille le noeud de retournement, qui est paresseux.
+    cam_base_topic: /camera/image
+    image_sub_compressed: false
+    image_sub_qos:
+      reliability: 1      # 1 = reliable ; voir l'avertissement plus haut
+      durability: 2       # 2 = volatile
+      depth: 1
+
+    # Les images ne sont pas rectifiees : le detecteur applique lui-meme les
+    # coefficients de distorsion annonces par camera_info.
+    image_is_rectified: false
+
+    # Cube cible : 50 mm d'arete, une face = un marqueur 4x4 numerote de 1 a 6.
+    # marker_size est le cote du CARRE NOIR, bordure blanche exclue : c'est lui
+    # qui fixe l'echelle, donc les distances. Les dictionnaires 4X4_50, _100,
+    # _250 et _1000 sont emboites (les 50 premiers codes sont identiques) ; le
+    # plus petit suffit pour six identifiants et laisse la plus grande distance
+    # de Hamming entre codes, donc le moins de faux positifs.
+    marker_dict: 4X4_50
+    marker_size: 0.040
+
+    # Poses laissees dans le repere de l'image (camera_upright_optical_frame).
+    # Pas de transformation vers base_footprint tant que la calibration n'est
+    # pas faite : une etape de plus melangerait l'erreur d'intrinseques a
+    # l'erreur de montage, et on ne saurait plus laquelle on mesure.
+    output_frame: ''
+    publish_tf: true
+
+    # Un marqueur plan admet deux solutions PnP symetriques ; on retient celle
+    # qui reprojette le mieux. Le cube n'ayant que des marqueurs isoles pour
+    # l'instant, l'ambiguite reste possible de face -- c'est l'argument pour
+    # fusionner plusieurs faces a l'etape suivante.
+    pose_selector:
+      strategy: REPROJECTION_ERROR
+      debug: false
+
+    # Parametres du detecteur OpenCV. Seul l'affinement des coins s'ecarte des
+    # valeurs par defaut : sans lui, les coins sont pris au pixel pres, et sur
+    # un marqueur de 40 mm vu a 1 m (21 px de cote) un pixel d'erreur fait 6 %
+    # de distance. MESURE sur images de synthese, memes intrinseques a la
+    # generation et a l'estimation, de 0.2 a 1.5 m : erreur maximale 6.0 % au
+    # pixel contre 2.1 % en sous-pixellique, moyenne 2.3 % contre 0.9 %.
+    aruco:
+      cornerRefinementMethod: 1        # 0 NONE, 1 SUBPIX, 2 CONTOUR, 3 APRILTAG
+      cornerRefinementWinSize: 5
+      cornerRefinementMaxIterations: 30
+      cornerRefinementMinAccuracy: 0.1

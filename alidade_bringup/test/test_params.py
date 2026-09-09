@@ -7,7 +7,7 @@ import yaml
 from alidade_bringup import params
 
 CONFIGS = ['controllers.yaml', 'nav2.yaml', 'slam.yaml', 'rplidar.yaml', 'camera.yaml',
-           'telemetry.yaml', 'diagnostics.yaml', 'exploration.yaml']
+           'telemetry.yaml', 'diagnostics.yaml', 'exploration.yaml', 'aruco.yaml']
 
 
 @pytest.fixture(scope='module')

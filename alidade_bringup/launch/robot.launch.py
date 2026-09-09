@@ -28,6 +28,7 @@ def setup(context):
     nav = params.as_bool(context.launch_configurations['nav'])
     lidar = params.as_bool(context.launch_configurations['lidar'])
     camera = params.as_bool(context.launch_configurations['camera'])
+    aruco = context.launch_configurations['aruco']
     mode = context.launch_configurations['mode']
     use_sim_time = params.as_bool(context.launch_configurations['use_sim_time'])
     pico_port = context.launch_configurations['pico_port']
@@ -59,8 +60,8 @@ def setup(context):
                                         hardware_revision=revision, use_sim_time=use_sim_time))
     if camera:
         # Se retire de lui-meme si /dev/camera n'existe pas.
-        launched.append(actions.include('camera.launch.py',
-                                        hardware_revision=revision, use_sim_time=use_sim_time))
+        launched.append(actions.include('camera.launch.py', hardware_revision=revision,
+                                        use_sim_time=use_sim_time, aruco=aruco))
 
     launched += actions.autonomy(revision, use_sim_time, last_spawner, slam=slam, nav=nav, mode=mode)
     return launched
@@ -82,6 +83,8 @@ def generate_launch_description():
                               description='demarre rplidar_ros'),
         DeclareLaunchArgument('camera', default_value='true',
                               description='demarre la camera C920 si /dev/camera existe'),
+        DeclareLaunchArgument('aruco', default_value='true',
+                              description='detection des marqueurs ArUco (avec la camera)'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('pico_port', default_value='/dev/pico'),
         OpaqueFunction(function=setup),

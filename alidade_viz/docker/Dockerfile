@@ -22,6 +22,8 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
       ros-jazzy-usb-cam \
       ros-jazzy-image-rotate \
       ros-jazzy-image-transport-plugins \
+      ros-jazzy-aruco-opencv \
+      ros-jazzy-aruco-opencv-msgs \
       ros-jazzy-rmw-cyclonedds-cpp \
       ros-jazzy-diagnostic-updater \
       ros-jazzy-diagnostic-aggregator \

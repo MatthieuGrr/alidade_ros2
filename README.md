@@ -32,6 +32,7 @@ alidade_ros2/
  │  └ imu_sensor_broadcaster ──/imu/data_raw             │
  │ nav2 (6 nœuds) ──Twist──▶ cmd_vel_stamper ──TwistStamped──▶ diff_drive_controller
  │ usb_cam ──/camera/raw/image──▶ ImageFlipNode ──/camera/image (droite) + camera_info
+ │                                              └──▶ aruco_tracker ──/aruco_detections + TF
  │ system_monitor (Pi, cadences) ─┐
  │ PicoSystem, nav2 ──/diagnostics─┴─▶ diagnostic_aggregator ──/diagnostics_agg
  └──────────────────────────────────────────────────────┘
@@ -112,6 +113,25 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    (provisoire : focale nominale, sans distorsion) ; reporter ensuite
    `2·atan(w/2fx)` dans `camera.sim_horizontal_fov` pour que Gazebo voie
    la même ouverture.
+
+   **Marqueurs ArUco** (`aruco:=true`, actif par défaut avec la caméra). Le
+   détecteur est composé dans le même conteneur que la caméra, donc les
+   images ne sont jamais sérialisées. Cible : un cube de 50 mm portant sur
+   chaque face un marqueur `DICT_4X4_50` de 40 mm (côté du carré noir),
+   numéroté de 1 à 6.
+   ```bash
+   ros2 run alidade_bringup aruco_bench.py watch      # identifiants, cadence, distances
+   ros2 run alidade_bringup aruco_bench.py sweep      # portée et justesse, sans robot ni caméra
+   ros2 run rqt_image_view rqt_image_view /aruco_tracker/debug   # marqueurs entourés
+   ```
+   La **détection** ne dépend pas de la calibration, seulement les **poses** :
+   tant que `camera_v1.yaml` est nominal, `/aruco_detections` et les TF
+   `marker_<id>` portent un biais d'échelle. Portée mesurée sur images
+   parfaites : 0,15 à 1,5 m, la limite basse venant du champ de vision et la
+   haute d'un côté apparent tombé à 14 px. Sur un cube posé au sol, la
+   caméra étant fixe et horizontale à 11,5 cm, le cube sort du champ par le
+   bas quand l'avant du robot est à moins de ~23 cm : l'approche finale se
+   fera à l'odométrie.
    Puis un mètre au sol :
    ```bash
    ros2 topic pub -r 20 /diff_drive_controller/cmd_vel geometry_msgs/msg/TwistStamped \
@@ -393,6 +413,22 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   640×480 en `rgb8` fait 900 ko, que CycloneDDS fragmente en centaines de
   datagrammes. En `best_effort`, un fragment perdu jette le message entier, et
   le compteur ne voyait **rien** passer alors que le flux tournait.
+- `aruco_opencv` ne sait décrire que des **damiers plans** (`GridBoard` :
+  `markers_x`, `markers_y`, `separation`), et son message `MarkerPose` ne
+  porte qu'un identifiant et une pose, pas les coins détectés. Un cube, dont
+  les six marqueurs sont sur six plans, n'est donc pas descriptible : la pose
+  du cube devra venir de notre code, en combinant les faces visibles.
+- Un marqueur ArUco a besoin d'une **marge blanche** d'au moins un module
+  autour de lui. Trop mince sur un fond contrasté, cette marge forme son
+  propre contour et le détecteur s'y accroche au lieu du carré noir — le
+  marqueur devient alors invisible **de près** et détecté de loin, ce qui est
+  contre-intuitif et coûte cher à diagnostiquer.
+- Le détecteur ne raffine pas les coins par défaut
+  (`cornerRefinementMethod: NONE`). Sur un marqueur de 40 mm vu à 1 m,
+  soit 21 px de côté, un pixel d'erreur fait 6 % de distance. Mesuré de 0,2 à
+  1,5 m : erreur maximale 6,0 % au pixel contre 2,1 % en sous-pixellique,
+  moyenne 2,3 % contre 0,9 %. D'où `cornerRefinementMethod: 1` dans
+  `aruco.yaml`.
 - Le Pico compte les ticks depuis **son** démarrage, pas depuis celui de ROS.
   Sans origine prise à l'activation, les positions de roue valaient plus de
   1500 rad dès la première lecture et `diff_drive_controller` démarrait son
