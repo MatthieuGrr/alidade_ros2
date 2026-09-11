@@ -14,6 +14,11 @@
 			<button class="alidade_mode" data-mode="2">MAPPING</button>
 			<button class="alidade_mode" data-mode="3">LOCALIZATION</button>
 			<button class="alidade_mode" data-mode="4">EXPLORATION</button>
+			<button class="alidade_mode" data-mode="5">DOCKING</button>
+		</div>
+		<div id="{uniqueID}_dockbox" style="display:none; margin-top:6px; gap:6px; align-items:center;">
+			<button id="{uniqueID}_undock">Degager (reculer du cube)</button>
+			<span style="color:#b4b4b4;">DOCKING a nouveau : nouvelle approche</span>
 		</div>
 
 		<div class="spacer"></div>
@@ -44,7 +49,8 @@
 		<hr class="dark_hr"/>
 
 		<p style="color:#b4b4b4;">Etat depuis /robot/state ; modes et sauvegarde via les services /mode_manager/*.
-		La pose initiale (LOCALIZATION) et les buts se posent sur la carte avec les widgets dedies.</p>
+		La pose initiale (LOCALIZATION) et les buts se posent sur la carte avec les widgets dedies.
+		DOCKING ne demarre que cube vu, de 8 a 42 cm devant le robot ; le robot s'arrete a 10 cm de la face.</p>
 
 		<hr class="dark_hr"/>
 

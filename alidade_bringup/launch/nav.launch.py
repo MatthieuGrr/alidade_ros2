@@ -1,14 +1,15 @@
 """Pile nav2 minimale d'Alidade.
 
 Volontairement ecrite a la main plutot que d'inclure
-nav2_bringup/navigation_launch.py : celui-ci demarre en plus un docking_server
-et un waypoint_follower, et son gestionnaire de cycle de vie abandonne le
-bringup entier si l'un d'eux echoue a se configurer.
+nav2_bringup/navigation_launch.py : celui-ci demarre en plus un
+waypoint_follower, et son gestionnaire de cycle de vie abandonne le bringup
+entier si l'un des noeuds echoue a se configurer.
 
 Chaine des commandes, la meme pour la navigation et le pilotage manuel :
 
     controller_server  --(cmd_vel_nav)--> velocity_smoother
     ou joystick (TELEOP)                  --(cmd_vel_smoothed)--> collision_monitor
+    ou cube_docking (DOCKING)
                                           --(cmd_vel, Twist)--> cmd_vel_stamper
                                           --(TwistStamped)--> diff_drive_controller
 
@@ -44,6 +45,7 @@ def setup(context):
     use_sim_time = params.as_bool(context.launch_configurations['use_sim_time'])
     autostart = params.as_bool(context.launch_configurations['autostart'])
     config = params.render_config('nav2.yaml', hw, use_sim_time)
+    docking = params.render_config('docking.yaml', hw, use_sim_time)
 
     # Les noeuds nav2 publient sur /tf absolu ; on les ramene au topic relatif
     # pour qu'ils restent dans le namespace courant.
@@ -65,6 +67,10 @@ def setup(context):
              name='lifecycle_manager_safety', output='screen',
              parameters=[{'use_sim_time': use_sim_time, 'autostart': True,
                           'node_names': SAFETY}]),
+        # Docking sur le cube : ni carte ni planification, seulement l'odometrie
+        # et la pose du cube. Sans requete (mode DOCKING), il ne publie rien.
+        Node(package='alidade_bringup', executable='cube_docking.py', name='cube_docking',
+             output='screen', parameters=[docking]),
         Node(package='nav2_lifecycle_manager', executable='lifecycle_manager',
              name='lifecycle_manager_navigation', output='screen',
              # Sans autostart, c'est le gestionnaire de modes qui appelle

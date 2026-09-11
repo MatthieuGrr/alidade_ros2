@@ -7,7 +7,7 @@ tester ne demande ni robot ni simulation.
 
 Regles :
   - une seule source de map -> odom a la fois : slam_toolbox (MAPPING,
-    EXPLORATION) ou amcl (LOCALIZATION, DOCKING) ;
+    EXPLORATION) ou amcl (LOCALIZATION) ;
   - LOCALIZATION exige une carte connue ;
   - la PLANIFICATION nav2 n'est pas pilotee ici : le gestionnaire la demarre
     des que map -> odom existe dans un mode qui navigue, et la met en pause
@@ -18,7 +18,11 @@ Regles :
     milieu d'une cartographie et y revenir sans perdre la carte ;
   - EXPLORATION = MAPPING plus l'explorateur de frontieres, qui pousse ses
     propres buts nav2 ; on l'arrete avant de quitter le mode ;
-  - DOCKING est reserve : phase 6 de la feuille de route.
+  - DOCKING approche le cube jusqu'a un ecart fixe (cube_docking.py).
+    Il ne demarre que cube VU : pas de recherche, l'operateur amene le robot a
+    portee. Il ne suit que l'odometrie et la pose du cube, et preserve donc la
+    localisation en cours comme TELEOP. Redemander DOCKING une fois arrete
+    relance une approche ; on annule l'approche avant de quitter le mode.
 """
 from __future__ import annotations
 
@@ -31,13 +35,13 @@ NAMES = {IDLE: 'IDLE', TELEOP: 'TELEOP', MAPPING: 'MAPPING', LOCALIZATION: 'LOCA
 BY_NAME = {v: k for k, v in NAMES.items()}
 
 SLAM_MODES = {MAPPING, EXPLORATION}
-AMCL_MODES = {LOCALIZATION, DOCKING}
+AMCL_MODES = {LOCALIZATION}
 NAVIGATING_MODES = SLAM_MODES | AMCL_MODES
 # Modes qui gardent la source de localisation en cours quelle qu'elle soit :
 # conduire a la main pendant une cartographie est un usage normal, et revenir
 # a MAPPING ou EXPLORATION doit reprendre la carte, pas repartir de zero.
-PRESERVING_MODES = {TELEOP}
-IMPLEMENTED = {IDLE, TELEOP, MAPPING, LOCALIZATION, EXPLORATION}
+PRESERVING_MODES = {TELEOP, DOCKING}
+IMPLEMENTED = {IDLE, TELEOP, MAPPING, LOCALIZATION, EXPLORATION, DOCKING}
 
 
 @dataclass
@@ -48,6 +52,8 @@ class Context:
     current_map: str = ''
     slam_active: bool = False
     amcl_active: bool = False
+    cube_visible: bool = False     # pose d'arret recue il y a moins d'une seconde
+    docking_active: bool = False   # une approche est en cours
 
 
 @dataclass
@@ -77,6 +83,14 @@ def plan(ctx: Context, target: int, map_name: str = '') -> Plan:
     if target not in IMPLEMENTED:
         raise Refused(f'{name_of(target)} : pas encore disponible (feuille de route)')
 
+    if target == DOCKING:
+        if ctx.current == DOCKING and ctx.docking_active:
+            return Plan(target, [], ctx.current_map)
+        if not ctx.cube_visible:
+            raise Refused('DOCKING : cube non vu (a amener dans le champ, de 8 a 42 cm devant le robot)')
+        if ctx.current == DOCKING:
+            return Plan(target, [('dock', 'start', '')], ctx.current_map)
+
     chosen_map = map_name or ctx.current_map
     if target in AMCL_MODES:
         if not chosen_map:
@@ -90,15 +104,18 @@ def plan(ctx: Context, target: int, map_name: str = '') -> Plan:
     if target == ctx.current and (target not in AMCL_MODES or same_map):
         return Plan(target, [], chosen_map if target in AMCL_MODES else ctx.current_map)
 
-    # L'exploration s'arrete avant tout le reste : elle tient un but nav2.
+    # L'exploration s'arrete avant tout le reste : elle tient un but nav2. De
+    # meme l'approche du cube, qui commande les roues.
     if ctx.current == EXPLORATION:
         steps.append(('explore', 'stop', ''))
+    if ctx.current == DOCKING:
+        steps.append(('dock', 'cancel', ''))
 
     # Tout changement commence par lacher le but en cours.
     steps.append(('nav', 'cancel', ''))
 
     # Quitter la source de localisation qui ne sert plus -- sauf vers un mode
-    # qui la preserve (TELEOP).
+    # qui la preserve (TELEOP, DOCKING).
     keep = target in PRESERVING_MODES
     if ctx.slam_active and not (target in SLAM_MODES or keep):
         steps.append(('slam', 'deactivate', ''))
@@ -114,6 +131,8 @@ def plan(ctx: Context, target: int, map_name: str = '') -> Plan:
         steps.append(('amcl', 'activate', ''))
     if target == EXPLORATION:
         steps.append(('explore', 'start', ''))
+    if target == DOCKING:
+        steps.append(('dock', 'start', ''))
 
     return Plan(target, steps, chosen_map if target in AMCL_MODES else '')
 

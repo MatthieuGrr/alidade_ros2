@@ -61,6 +61,7 @@ footprint:
   robot_radius: 0.15           # valeur nav2, arrondie au-dessus
   length: 0.209                # encombrement au sol, selon X
   width: 0.217                 # selon Y, pneus compris
+  front_x: 0.120               # face avant des plateaux (CAO) ; le support camera depasse a 0.1245
 
 # ---------------------------------------------------------------------------
 # Poses attendues des repères principaux, exprimées depuis base_footprint.

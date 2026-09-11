@@ -5,11 +5,12 @@ Services (alidade_msgs) :
     /mode_manager/set_mode    changer de mode, avec la carte pour LOCALIZATION
     /mode_manager/save_map    sauvegarder la carte en cours (MAPPING)
     /mode_manager/list_maps   cartes disponibles
+    /mode_manager/undock      reculer du cube (std_srvs/Trigger, mode DOCKING)
 Publie /robot/state (RobotState, 2 Hz, transient_local).
 
 Il pilote par cycle de vie slam_toolbox, map_server, amcl et map_saver (tous
-lances 'unconfigured' par les launch), et nav2 a travers son lifecycle
-manager (STARTUP / PAUSE). La logique des transitions est dans
+lances 'unconfigured' par les launch), nav2 a travers son lifecycle manager
+(STARTUP / PAUSE), et le docking par les actions de cube_docking. La logique des transitions est dans
 alidade_bringup/modes.py, testee sans ROS ; ici on execute les etapes, on
 observe (TF, AMCL, nav2, diagnostics) et on publie.
 
@@ -30,14 +31,15 @@ import rclpy
 from action_msgs.msg import GoalStatus, GoalStatusArray
 from action_msgs.srv import CancelGoal
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
-from geometry_msgs.msg import PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from lifecycle_msgs.msg import State, Transition
 from lifecycle_msgs.srv import ChangeState, GetState
-from nav2_msgs.action import NavigateToPose
+from nav2_msgs.action import DockRobot, NavigateToPose, UndockRobot
 from nav2_msgs.srv import LoadMap, ManageLifecycleNodes, SaveMap
 from nav_msgs.msg import OccupancyGrid
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import SetParameters
+from rclpy.action import ActionClient
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
@@ -58,6 +60,11 @@ from alidade_msgs.srv import ListMaps, SaveMap as SaveMapSrv, SetMode
 LATCHED = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
                      durability=DurabilityPolicy.TRANSIENT_LOCAL)
 ACTIVE_GOAL = {GoalStatus.STATUS_ACCEPTED, GoalStatus.STATUS_EXECUTING, GoalStatus.STATUS_CANCELING}
+DOCK_TYPE = 'cube'                      # informatif : cube_docking ne sert que ce dock
+CUBE_FRESH_S = 1.0                      # pose d'arret plus vieille : cube considere perdu
+DOCK_FEEDBACK = {DockRobot.Feedback.NAV_TO_STAGING_POSE: 'mise en place dans l axe',
+                 DockRobot.Feedback.INITIAL_PERCEPTION: 'attente du cube',
+                 DockRobot.Feedback.CONTROLLING: 'approche du cube'}
 GOAL_TEXT = {GoalStatus.STATUS_ACCEPTED: 'accepted', GoalStatus.STATUS_EXECUTING: 'executing',
              GoalStatus.STATUS_CANCELING: 'canceling', GoalStatus.STATUS_SUCCEEDED: 'succeeded',
              GoalStatus.STATUS_CANCELED: 'canceled', GoalStatus.STATUS_ABORTED: 'aborted'}
@@ -102,6 +109,9 @@ class ModeManager(Node):
         self.health = DiagnosticStatus.STALE
         self.errors: list[str] = []
         self.sensors = {'lidar': False, 'camera': False, 'imu': False, 'pico': False}
+        self.cube_seen = 0.0           # derniere pose d'arret recue (monotone)
+        self.dock_pose = None
+        self.dock_goal = None          # poignee de l'action de docking ou de degagement en cours
 
         io = ReentrantCallbackGroup()
         self.io = io
@@ -116,6 +126,9 @@ class ModeManager(Node):
         self.create_subscription(NavigateToPose.Impl.FeedbackMessage, '/navigate_to_pose/_action/feedback',
                                  self.on_goal_feedback, 10, callback_group=io)
         self.create_subscription(DiagnosticArray, '/diagnostics_agg', self.on_diagnostics, 10, callback_group=io)
+        self.create_subscription(PoseStamped, '/cube/dock_pose', self.on_dock_pose, 10, callback_group=io)
+        self.act_dock = ActionClient(self, DockRobot, '/dock_robot', callback_group=io)
+        self.act_undock = ActionClient(self, UndockRobot, '/undock_robot', callback_group=io)
 
         self.lc = {name: (self.create_client(GetState, f'/{name}/get_state', callback_group=io),
                           self.create_client(ChangeState, f'/{name}/change_state', callback_group=io))
@@ -139,6 +152,7 @@ class ModeManager(Node):
         self.create_service(SetMode, '/mode_manager/set_mode', self.on_set_mode, callback_group=srv)
         self.create_service(SaveMapSrv, '/mode_manager/save_map', self.on_save_map, callback_group=srv)
         self.create_service(ListMaps, '/mode_manager/list_maps', self.on_list_maps, callback_group=io)
+        self.create_service(Trigger, '/mode_manager/undock', self.on_undock, callback_group=srv)
 
         self.pub = self.create_publisher(RobotState, '/robot/state', LATCHED)
         self.create_timer(0.5, self.on_tick, callback_group=ReentrantCallbackGroup())
@@ -170,6 +184,15 @@ class ModeManager(Node):
     def on_goal_feedback(self, msg):
         with self.lock:
             self.distance_remaining = float(msg.feedback.distance_remaining)
+
+    def on_dock_pose(self, msg):
+        with self.lock:
+            self.cube_seen = time.monotonic()
+            self.dock_pose = msg
+
+    def cube_visible(self) -> bool:
+        with self.lock:
+            return time.monotonic() - self.cube_seen < CUBE_FRESH_S
 
     def on_diagnostics(self, msg):
         levels = {s.name: s for s in msg.status}
@@ -316,6 +339,103 @@ class ModeManager(Node):
         ok, msg = self.request_mode(modes.MAPPING)
         self.get_logger().info(f'fin d exploration -> MAPPING : {msg}')
 
+    # ------------------------------------------------------------------ docking
+    def send_goal(self, client, goal, what: str, feedback=None):
+        if not client.wait_for_server(timeout_sec=5.0):
+            raise Step(f'{what} : cube_docking absent (lance par nav.launch.py)')
+        future = client.send_goal_async(goal, feedback_callback=feedback)
+        deadline = time.monotonic() + 5.0
+        while not future.done():
+            if time.monotonic() > deadline:
+                raise Step(f'{what} : pas de reponse du serveur')
+            time.sleep(0.05)
+        handle = future.result()
+        if not handle.accepted:
+            raise Step(f'{what} : requete refusee')
+        with self.lock:
+            self.dock_goal = handle
+        return handle
+
+    def step_dock_start(self):
+        with self.lock:
+            seen = self.dock_pose
+        if seen is None or not self.cube_visible():
+            raise Step('cube perdu avant le depart')
+        # Pose d'arret courante comme estimation initiale ; le serveur la
+        # rafraichit ensuite a chaque detection. Horodatage nul : la derniere
+        # transformation connue, le robot etant a l'arret.
+        pose = PoseStamped(pose=seen.pose)
+        pose.header.frame_id = seen.header.frame_id
+        goal = DockRobot.Goal(use_dock_id=False, dock_pose=pose, dock_type=DOCK_TYPE,
+                              navigate_to_staging_pose=False)
+        self.set_substate('approche du cube')
+        handle = self.send_goal(self.act_dock, goal, 'docking', self.on_dock_feedback)
+        handle.get_result_async().add_done_callback(lambda f: self.on_dock_result(handle, f))
+
+    def on_dock_feedback(self, msg):
+        text = DOCK_FEEDBACK.get(msg.feedback.state)
+        if text:
+            retries = msg.feedback.num_retries
+            self.set_substate(text + (f' (reprise {retries})' if retries else ''))
+
+    def on_dock_result(self, handle, future):
+        res = future.result()
+        result, status = res.result, res.status
+        with self.lock:
+            if self.dock_goal is handle:
+                self.dock_goal = None
+            if status == GoalStatus.STATUS_SUCCEEDED and result.success:
+                self.substate = 'arrete devant le cube'
+            elif status == GoalStatus.STATUS_CANCELED:
+                self.substate = 'approche annulee'
+            else:
+                self.substate = f'approche echouee : {result.error_msg or f"code {result.error_code}"}'
+        self.get_logger().info(f'docking : {self.substate}')
+
+    def step_dock_cancel(self):
+        with self.lock:
+            handle = self.dock_goal
+        if handle is None:
+            return
+        self.set_substate('annulation de l approche')
+        future = handle.cancel_goal_async()
+        deadline = time.monotonic() + 5.0
+        while not future.done() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        with self.lock:
+            if self.dock_goal is handle:
+                self.dock_goal = None
+
+    def on_undock(self, request, response):
+        """Recule du cube (distance : undock_distance de docking.yaml)."""
+        with self.lock:
+            mode, busy, active = self.mode, self.transitioning, self.dock_goal is not None
+        if mode != modes.DOCKING:
+            response.success, response.message = False, 'degagement : seulement en mode DOCKING'
+            return response
+        if busy or active:
+            response.success, response.message = False, 'degagement : une approche ou une transition est en cours'
+            return response
+        try:
+            self.set_substate('degagement')
+            handle = self.send_goal(self.act_undock, UndockRobot.Goal(dock_type=DOCK_TYPE, max_undocking_time=15.0),
+                                    'degagement')
+        except Step as why:
+            self.set_substate(str(why))
+            response.success, response.message = False, str(why)
+            return response
+
+        def done(f):
+            res = f.result()
+            with self.lock:
+                if self.dock_goal is handle:
+                    self.dock_goal = None
+                ok = res.status == GoalStatus.STATUS_SUCCEEDED and res.result.success
+                self.substate = 'degage' if ok else f'degagement echoue : {res.result.error_msg or res.status}'
+        handle.get_result_async().add_done_callback(done)
+        response.success, response.message = True, 'degagement lance'
+        return response
+
     def step_map_load(self, name: str):
         path = self.maps_dir / name / 'map.yaml'
         if not path.exists():
@@ -369,6 +489,10 @@ class ModeManager(Node):
                 self.step_map_load(arg)
             elif target == 'explore':
                 self.step_explore(action == 'start')
+            elif target == 'dock' and action == 'start':
+                self.step_dock_start()
+            elif target == 'dock' and action == 'cancel':
+                self.step_dock_cancel()
             else:
                 raise Step(f'etape inconnue : {target} {action}')
 
@@ -381,8 +505,10 @@ class ModeManager(Node):
         # sources sont ceux que le gestionnaire a lui-meme etablis : pas
         # d'appel de service ici, la reponse a set_mode doit etre immediate.
         with self.lock:
+            fresh = time.monotonic() - self.cube_seen < CUBE_FRESH_S
             return modes.Context(current=self.mode, maps=self.list_maps(), current_map=self.current_map,
-                                 slam_active=self.slam_active, amcl_active=self.amcl_active)
+                                 slam_active=self.slam_active, amcl_active=self.amcl_active,
+                                 cube_visible=fresh, docking_active=self.dock_goal is not None)
 
     def request_mode(self, target: int, map_name: str = '') -> tuple[bool, str]:
         """Verifie et lance la transition ; le resultat se lit dans /robot/state.
@@ -427,7 +553,16 @@ class ModeManager(Node):
                 self.get_logger().error(f'transition vers {modes.name_of(target)} : {why}')
                 with self.lock:
                     slam_ok = self.slam_active
-                if target == modes.EXPLORATION and slam_ok:
+                if target == modes.DOCKING:
+                    # Le docking preserve la localisation : un depart manque ne
+                    # doit pas la detruire. On reste ou l'on etait (l'exploration,
+                    # arretee au passage, redevient une cartographie).
+                    with self.lock:
+                        if self.mode == modes.EXPLORATION:
+                            self.mode = modes.MAPPING
+                        self.transitioning = False
+                        self.substate = f'docking impossible : {why}'
+                elif target == modes.EXPLORATION and slam_ok:
                     # L'explorateur manque ou refuse : la carte en cours reste
                     # bonne, on reste en cartographie plutot que de tout couper.
                     with self.lock:
@@ -442,8 +577,10 @@ class ModeManager(Node):
             with self.lock:
                 self.mode = target
                 self.transitioning = False
-                self.substate = 'en attente d une pose initiale' \
-                    if target in modes.AMCL_MODES and not localized else ''
+                if target in modes.AMCL_MODES and not localized:
+                    self.substate = 'en attente d une pose initiale'
+                elif target != modes.DOCKING:   # l'approche tient son propre sous-etat
+                    self.substate = ''
                 if target in modes.AMCL_MODES:
                     self.current_map = plan.map_name
             self.get_logger().info(f'mode {modes.name_of(target)}')

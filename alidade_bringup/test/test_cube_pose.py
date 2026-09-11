@@ -94,3 +94,60 @@ def test_quaternion_aller_retour():
         q = cube.quaternion(rot)
         assert np.isclose(np.linalg.norm(q), 1.0)
         assert np.allclose(cube.matrix([0, 0, 0], q)[:3, :3], rot, atol=1e-9)
+
+
+# ----------------------------------------------------------------- pose d'arret
+STANDOFF = 0.22   # 10 cm d'ecart + 12 cm de base_footprint a la face avant
+
+
+def yawed(deg, x=0.45, y=0.0):
+    return np.array([x, y, 0.025]), rot_z(deg)
+
+
+def test_sides_conformes_a_cube_yaml(model):
+    _, faces = model
+    for (col, sign), fid in cube.SIDES.items():
+        expected = np.zeros(3)
+        expected[col] = sign
+        assert np.allclose(faces[fid].pose[:3, 2], expected), f'face {fid}'
+
+
+def test_cube_droit_devant(model):
+    edge, _ = model
+    t = cube.dock_target(*yawed(0), edge, STANDOFF)
+    assert t.face_id == 4                       # sa face -x regarde le robot
+    assert t.x == pytest.approx(0.45 - edge / 2 - STANDOFF)
+    assert t.y == pytest.approx(0.0, abs=1e-12)
+    assert t.yaw == pytest.approx(0.0, abs=1e-12)
+
+
+def test_cube_tourne_le_robot_s_aligne_sur_la_face(model):
+    edge, _ = model
+    t = cube.dock_target(*yawed(30), edge, STANDOFF)
+    assert t.face_id == 4
+    assert np.degrees(t.yaw) == pytest.approx(30.0)
+    # a l'arret, le centre du cube est droit devant, a demi-arete + standoff
+    ahead = np.array([np.cos(t.yaw), np.sin(t.yaw)])
+    centre = np.array([0.45, 0.0])
+    assert (centre - [t.x, t.y]) @ ahead == pytest.approx(edge / 2 + STANDOFF)
+    assert np.cross(ahead, centre - [t.x, t.y]) == pytest.approx(0.0, abs=1e-12)
+
+
+def test_hysteresis_entre_deux_faces(model):
+    edge, _ = model
+    # Tourne de +50 degres, le cube presente sa face +y (la 5) a 40 degres du
+    # robot, contre 50 pour la face 4...
+    assert cube.dock_target(*yawed(50), edge, STANDOFF).face_id == 5
+    # ... mais on garde la face 4 si c'etait deja la cible : 10 < 15 degres.
+    assert cube.dock_target(*yawed(50), edge, STANDOFF, previous=(0, -1)).face_id == 4
+    # A 70 degres, l'ecart (70 - 20 = 50) l'emporte sur l'hysteresis.
+    assert cube.dock_target(*yawed(70), edge, STANDOFF, previous=(0, -1)).face_id == 5
+
+
+def test_cube_decale_la_face_choisie_regarde_le_robot(model):
+    edge, _ = model
+    # Cube a gauche devant : c'est sa face -x qui regarde le robot, et le cap
+    # d'arrivee reste celui de la face, pas celui du rayon robot -> cube.
+    t = cube.dock_target(*yawed(0, x=0.40, y=0.15), edge, STANDOFF)
+    assert t.face_id == 4 and t.yaw == pytest.approx(0.0, abs=1e-12)
+    assert t.y == pytest.approx(0.15)

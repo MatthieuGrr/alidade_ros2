@@ -72,11 +72,42 @@ def test_teleop_preserves_localization():
     assert steps(m.plan(driving, m.IDLE)) == [('nav', 'cancel'), ('slam', 'deactivate')]
 
 
-def test_reserved_modes_are_refused():
-    with pytest.raises(m.Refused, match='feuille de route'):
-        m.plan(m.Context(current=m.MAPPING), m.DOCKING)
+def test_unknown_mode_is_refused():
     with pytest.raises(m.Refused, match='inconnu'):
         m.plan(m.Context(current=m.IDLE), 42)
+
+
+def test_docking_needs_the_cube_in_view():
+    with pytest.raises(m.Refused, match='cube non vu'):
+        m.plan(m.Context(current=m.IDLE), m.DOCKING)
+    p = m.plan(m.Context(current=m.IDLE, cube_visible=True), m.DOCKING)
+    assert steps(p) == [('nav', 'cancel'), ('dock', 'start')]
+
+
+def test_docking_preserves_localization():
+    """S'approcher du cube ne suit que l'odometrie : la carte ou la
+    localisation en cours survit, comme en TELEOP."""
+    ctx = m.Context(current=m.LOCALIZATION, maps=['a'], current_map='a', amcl_active=True, cube_visible=True)
+    assert steps(m.plan(ctx, m.DOCKING)) == [('nav', 'cancel'), ('dock', 'start')]
+    back = m.Context(current=m.DOCKING, maps=['a'], current_map='a', amcl_active=True)
+    assert steps(m.plan(back, m.LOCALIZATION, 'a')) == [('dock', 'cancel'), ('nav', 'cancel')]
+    mapping = m.Context(current=m.DOCKING, slam_active=True)
+    assert steps(m.plan(mapping, m.MAPPING)) == [('dock', 'cancel'), ('nav', 'cancel')]
+
+
+def test_docking_again_restarts_the_approach_only_when_stopped():
+    stopped = m.Context(current=m.DOCKING, cube_visible=True)
+    assert steps(m.plan(stopped, m.DOCKING)) == [('dock', 'start')]
+    running = m.Context(current=m.DOCKING, cube_visible=True, docking_active=True)
+    assert m.plan(running, m.DOCKING).steps == []
+    with pytest.raises(m.Refused, match='cube non vu'):
+        m.plan(m.Context(current=m.DOCKING), m.DOCKING)
+
+
+def test_leaving_docking_cancels_the_approach_first():
+    ctx = m.Context(current=m.DOCKING, docking_active=True)
+    assert steps(m.plan(ctx, m.IDLE)) == [('dock', 'cancel'), ('nav', 'cancel')]
+    assert steps(m.plan(ctx, m.TELEOP)) == [('dock', 'cancel'), ('nav', 'cancel')]
 
 
 def test_exploration_extends_mapping():
@@ -99,3 +130,5 @@ def test_nav_only_when_localized_in_a_navigating_mode():
     assert not m.nav_wanted(m.IDLE, True)
     assert not m.nav_wanted(m.TELEOP, True)
     assert m.nav_wanted(m.LOCALIZATION, True)
+    # Le docking a sa propre loi de commande : pas de planificateur en concurrence.
+    assert not m.nav_wanted(m.DOCKING, True)

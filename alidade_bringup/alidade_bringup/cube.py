@@ -93,3 +93,52 @@ def estimate(markers: dict[int, np.ndarray], faces: dict[int, Face]) -> CubePose
     angle = max(np.degrees(np.arccos(np.clip((np.trace(rot.T @ p[:3, :3]) - 1) / 2, -1, 1)))
                 for _, p in poses)
     return CubePose(centre, rot, [i for i, _ in poses], spread, float(angle))
+
+
+# Faces verticales du cube, par l'axe de sa normale sortante : (colonne de la
+# rotation, signe) -> identifiant, pour le dire a l'operateur.
+SIDES = {(0, 1): 2, (0, -1): 4, (1, 1): 5, (1, -1): 3}
+
+
+@dataclass
+class DockTarget:
+    x: float                # ou base_footprint doit s'arreter, repere du robot
+    y: float
+    yaw: float              # cap d'arrivee : face au cube
+    side: tuple[int, int]   # face abordee, cle de SIDES
+    face_id: int
+
+
+def dock_target(position: np.ndarray, rotation: np.ndarray, edge: float, standoff: float,
+                previous: tuple[int, int] | None = None, hysteresis_deg: float = 15.0) -> DockTarget | None:
+    """Pose d'arret devant la face verticale la plus tournee vers le robot.
+
+    `position` et `rotation` : le cube dans le repere du robot (base_footprint).
+    `standoff` : distance de la face du cube a base_footprint a l'arret, soit
+    l'ecart voulu plus la distance de base_footprint a la face avant du robot.
+    La face precedente est gardee tant qu'une autre ne fait pas mieux de plus de
+    `hysteresis_deg` : cube vu a 45 degres, sans cela, la cible basculerait d'un
+    quart de tour d'une image a l'autre en pleine approche. None si le cube
+    n'est pas pose sur une face (aucune normale laterale horizontale).
+    """
+    towards_robot = -np.array([position[0], position[1]])
+    towards_robot /= max(np.linalg.norm(towards_robot), 1e-9)
+    scores = {}
+    for side in SIDES:
+        n = rotation[:, side[0]] * side[1]
+        if abs(n[2]) > 0.5:
+            continue
+        horizontal = n[:2] / np.linalg.norm(n[:2])
+        scores[side] = (float(horizontal @ towards_robot), horizontal)
+    if not scores:
+        return None
+    best = max(scores, key=lambda s: scores[s][0])
+    if previous in scores:
+        def angle(side):
+            return np.degrees(np.arccos(np.clip(scores[side][0], -1.0, 1.0)))
+        if angle(previous) - angle(best) < hysteresis_deg:
+            best = previous
+    normal = scores[best][1]
+    target = position[:2] + normal * (edge / 2 + standoff)
+    yaw = float(np.arctan2(-normal[1], -normal[0]))
+    return DockTarget(float(target[0]), float(target[1]), yaw, best, SIDES[best])

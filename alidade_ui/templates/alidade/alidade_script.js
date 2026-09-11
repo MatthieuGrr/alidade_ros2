@@ -19,6 +19,7 @@ const status = new Status(icondiv, document.getElementById("{uniqueID}_status"))
 const el = (name) => document.getElementById("{uniqueID}_" + name);
 const modeSpan = el("mode"), substateSpan = el("substate"), mapSelect = el("map");
 const saveName = el("savename"), saveButton = el("save");
+const dockBox = el("dockbox"), undockButton = el("undock");
 
 function svgIcon(color, letter) {
 	const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50">` +
@@ -58,6 +59,9 @@ function render(msg) {
 		li.textContent = e;
 		errors.appendChild(li);
 	}
+
+	dockBox.style.display = msg.mode === 5 ? "flex" : "none";
+	undockButton.disabled = msg.transitioning;
 
 	for (const b of document.querySelectorAll("#{uniqueID}_modes .alidade_mode")) {
 		const active = parseInt(b.dataset.mode) === msg.mode;
@@ -114,6 +118,13 @@ for (const b of document.querySelectorAll("#{uniqueID}_modes .alidade_mode")) {
 		});
 	});
 }
+
+undockButton.addEventListener("click", () => {
+	status.setWarn("degagement demande");
+	callService("/mode_manager/undock", "std_srvs/srv/Trigger", {}, (res) => {
+		if (res.success) status.setOK(res.message); else status.setError(res.message);
+	});
+});
 
 saveButton.addEventListener("click", () => {
 	status.setWarn("sauvegarde demandee");

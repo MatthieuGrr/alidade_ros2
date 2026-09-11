@@ -5,6 +5,7 @@
     aruco_bench.py synth 1 0.50             # camera de synthese : marqueur 1 a 50 cm
     aruco_bench.py sweep                    # portee et justesse sur images parfaites
     aruco_bench.py cube 0.40 35 20          # rend le cube et verifie sa geometrie
+    aruco_bench.py fake-cube 0.60 0.10 30   # SIMULATION : cube a (x, y, cap) dans odom
 
 'synth' publie /camera/image_raw et /camera/camera_info comme le ferait la camera,
 ce qui permet de valider toute la chaine sans materiel : dictionnaire, taille
@@ -256,6 +257,80 @@ def cmd_synth(args):
     rclpy.shutdown()
 
 
+def cmd_fake_cube(args):
+    """Detections qu'une vraie camera ferait d'un cube pose dans la scene.
+
+    Pour la simulation, qui n'a pas de cube ArUco : le cube est fixe dans odom
+    (qui vaut le monde tant que le robot simule ne glisse pas), et chaque face
+    est publiee sur /aruco_detections si elle regarde la camera et tient
+    entiere dans l'image calibree. Cela exerce toute la chaine du docking :
+    cube_detector, cube_docking, gestionnaire de modes.
+    """
+    import rclpy
+    import tf2_ros
+    import yaml
+    from aruco_opencv_msgs.msg import ArucoDetection, MarkerPose
+    from geometry_msgs.msg import Point, Pose, Quaternion
+    from rclpy.node import Node
+
+    from alidade_bringup import cube, params
+
+    edge, faces = cube.load(params.bringup_share() / 'config' / 'cube.yaml')
+    calib = yaml.safe_load((params.description_share() / 'config' / 'camera_v1.yaml').read_text())
+    k = np.array(calib['camera_matrix']['data']).reshape(3, 3)
+    w, h = calib['image_width'], calib['image_height']
+    half = SIDE / 2
+    corners = np.array([[-half, half, 0, 1], [half, half, 0, 1], [half, -half, 0, 1], [-half, -half, 0, 1]]).T
+    yaw = math.radians(args.yaw)
+    in_odom = np.eye(4)
+    in_odom[:3, :3] = [[math.cos(yaw), -math.sin(yaw), 0], [math.sin(yaw), math.cos(yaw), 0], [0, 0, 1]]
+    in_odom[:3, 3] = [args.x, args.y, edge / 2]
+
+    rclpy.init()
+    node = Node('aruco_bench_fake_cube')
+    buf = tf2_ros.Buffer()
+    tf2_ros.TransformListener(buf, node)
+    pub = node.create_publisher(ArucoDetection, '/aruco_detections', 10)
+    frame = 'camera_optical_frame'
+    seen_before = None
+
+    def tick():
+        nonlocal seen_before
+        try:
+            t = buf.lookup_transform(frame, 'odom', rclpy.time.Time())
+        except tf2_ros.TransformException:
+            return
+        tr, q = t.transform.translation, t.transform.rotation
+        cam_from_odom = cube.matrix([tr.x, tr.y, tr.z], [q.x, q.y, q.z, q.w])
+        msg = ArucoDetection()
+        msg.header.stamp = t.header.stamp
+        msg.header.frame_id = frame
+        for fid, face in faces.items():
+            m = cam_from_odom @ in_odom @ face.pose
+            pts = m @ corners
+            if np.any(pts[2] < 0.05) or m[:3, 2] @ -m[:3, 3] <= 0.3 * np.linalg.norm(m[:3, 3]):
+                continue            # derriere la camera, ou face vue a plus de ~72 degres
+            uv = (k @ pts[:3])[:2] / pts[2]
+            if np.any(uv[0] < 0) or np.any(uv[0] >= w) or np.any(uv[1] < 0) or np.any(uv[1] >= h):
+                continue            # marqueur coupe par le bord de l'image
+            qx, qy, qz, qw = cube.quaternion(m[:3, :3])
+            msg.markers.append(MarkerPose(marker_id=fid, pose=Pose(
+                position=Point(x=m[0, 3], y=m[1, 3], z=m[2, 3]),
+                orientation=Quaternion(x=qx, y=qy, z=qz, w=qw))))
+        ids = sorted(mk.marker_id for mk in msg.markers)
+        if ids != seen_before:
+            print(f"faces vues : {ids or 'aucune'}", flush=True)
+            seen_before = ids
+        pub.publish(msg)
+
+    node.create_timer(1 / 15.0, tick)
+    print(f'cube en ({args.x:.2f}, {args.y:.2f}) dans odom, cap {args.yaw:.0f} deg')
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+
+
 def cmd_watch(args):
     import rclpy
     from aruco_opencv_msgs.msg import ArucoDetection
@@ -321,6 +396,12 @@ def main():
     c.add_argument('yaw', nargs='?', type=float, default=35.0)
     c.add_argument('pitch', nargs='?', type=float, default=20.0)
     c.set_defaults(func=cmd_cube)
+
+    f = sub.add_parser('fake-cube', help='SIMULATION : detections d un cube pose dans odom')
+    f.add_argument('x', type=float)
+    f.add_argument('y', type=float)
+    f.add_argument('yaw', nargs='?', type=float, default=0.0, help='cap du cube, degres')
+    f.set_defaults(func=cmd_fake_cube)
 
     args = ap.parse_args()
     return args.func(args) or 0

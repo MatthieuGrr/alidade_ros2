@@ -83,7 +83,8 @@ def setup(context):
         # Hors du conteneur : il ne lit que les detections, quelques centaines
         # d'octets, et c'est du Python.
         extra.append(Node(package='alidade_bringup', executable='cube_detector.py',
-                          output='screen', parameters=[{'use_sim_time': use_sim_time}]))
+                          output='screen',
+                          parameters=[params.render_config('docking.yaml', hw, use_sim_time)]))
 
     # AUCUN remappage : image_transport les applique de facon incoherente
     # (deux fois au nom de base, jamais aux topics de ses plugins), voir README.
