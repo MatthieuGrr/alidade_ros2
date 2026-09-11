@@ -5,6 +5,9 @@
                            /cube/dock_pose  (PoseStamped, base_footprint : ou
                                              s'arreter devant le cube, pour
                                              cube_docking)
+                           /cube/center     (PointStamped, base_footprint :
+                                             centre du cube, publie juste avant
+                                             la pose d'arret)
                            /cube/markers    (MarkerArray, pour Vizanti ou rviz)
 
 Chaque face vue donne la pose du cube ; plusieurs faces sont moyennees (voir
@@ -19,7 +22,7 @@ import rclpy
 import tf2_ros
 from aruco_opencv_msgs.msg import ArucoDetection
 from builtin_interfaces.msg import Duration
-from geometry_msgs.msg import Point, Pose, PoseStamped, Quaternion
+from geometry_msgs.msg import Point, PointStamped, Pose, PoseStamped, Quaternion
 from rclpy.node import Node
 from std_msgs.msg import ColorRGBA
 from visualization_msgs.msg import Marker, MarkerArray
@@ -54,6 +57,7 @@ class CubeDetector(Node):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         self.pub_pose = self.create_publisher(PoseStamped, '/cube/pose', 10)
         self.pub_dock = self.create_publisher(PoseStamped, '/cube/dock_pose', 10)
+        self.pub_centre = self.create_publisher(PointStamped, '/cube/center', 10)
         self.pub_markers = self.create_publisher(MarkerArray, '/cube/markers', 10)
         self.create_subscription(ArucoDetection, '/aruco_detections', self.on_detection, 10)
         self.get_logger().info(f'cube de {self.edge * 1000:.0f} mm, faces {sorted(self.faces)}')
@@ -104,6 +108,8 @@ class CubeDetector(Node):
         dock = PoseStamped()
         dock.header.stamp = msg.header.stamp      # instant de l'image, pas de la publication
         dock.header.frame_id = BASE
+        self.pub_centre.publish(PointStamped(header=dock.header, point=Point(
+            x=float(position[0]), y=float(position[1]), z=float(position[2]))))
         dock.pose.position = Point(x=target.x, y=target.y, z=0.0)
         dock.pose.orientation = Quaternion(z=math.sin(target.yaw / 2), w=math.cos(target.yaw / 2))
         self.pub_dock.publish(dock)

@@ -46,20 +46,29 @@ class Pose2D:
 @dataclass
 class Gains:
     staging: float = 0.20        # m, retrait de la pose de mise en place sur la pose d'arret
+    # Planchers MESURES sur le robot (11 sept. 2026), consigne tenue 1.5-2 s :
+    # 0.15 rad/s ne fait rien, 0.25 donne 0.08 ; 2 cm/s donne 0.6 cm/s, et a
+    # 4 cm/s le demarrage est encore dissymetrique (9 degres de derive). Fiable
+    # a partir de 0.45-0.5 rad/s et de 5 cm/s.
     v_max: float = 0.08          # m/s
-    v_min: float = 0.02          # m/s, en dessous les moteurs calent
+    v_min: float = 0.05          # m/s
     w_max: float = 0.8           # rad/s
-    w_min: float = 0.25          # rad/s, pour que les pivots aboutissent
+    w_min: float = 0.45          # rad/s
     k_v: float = 1.0             # 1/s, ralentissement a l'approche d'un point
     k_yaw: float = 2.0           # 1/s, correction de cap
     k_lat: float = 10.0          # 1/m, ecart lateral -> cap de rattrapage
-    yaw_tol: float = math.radians(2.0)    # fin d'un pivot
+    yaw_tol: float = math.radians(3.0)    # fin d'un pivot (w_min eleve : pas plus serre)
     pos_tol: float = 0.01        # m, fin d'une ligne droite
     lat_tol: float = 0.015       # m, arrivee acceptee
     arrive_yaw_tol: float = math.radians(5.0)
-    skip_lat: float = 0.015      # m, mise en place inutile en deca...
-    skip_yaw: float = math.radians(6.0)   # ... et de ce cap...
-    skip_min_run: float = 0.08   # m, ... s'il reste au moins cette course
+    # Mise en place inutile en deca de ces ecarts : l'approche les rattrape,
+    # alors qu'un pivot-recul-pivot fait perdre le cube de vue.
+    # Seuils verifies en simulation (zone morte comprise) : 150 departs a 8-25
+    # cm, 0 echec ; a 10 cm de course et 2 cm d'ecart, l'approche seule
+    # arrivait de travers (6.6 degres).
+    skip_lat: float = 0.025      # m, ...
+    skip_yaw: float = math.radians(10.0)  # ... et de ce cap...
+    skip_min_run: float = 0.12   # m, ... s'il reste au moins cette course
 
 
 def errors(robot: Pose2D, dock: Pose2D) -> tuple[float, float, float]:
@@ -136,3 +145,57 @@ def approach(robot: Pose2D, dock: Pose2D, g: Gains) -> tuple[float, float, bool]
     wanted = -math.atan(g.k_lat * lat)
     w = clamp(g.k_yaw * wrap(wanted - yaw), -g.w_max, g.w_max)
     return v, w, False
+
+
+class TargetFilter:
+    """Pose d'arret lissee dans odom, a partir du centre du cube et du cap de
+    la face visee.
+
+    Le centre du cube est mesure a 1-2 mm pres ; le cap de sa face, lui,
+    bascule de +-8 degres d'une image a l'autre (ambiguite d'un marqueur plan).
+    Or la pose d'arret est a ~25 cm du centre, et ce bras de levier change
+    8 degres de cap en 3 cm de deplacement lateral de la cible : lisser la pose
+    d'arret en bloc laisse passer ce bruit. On lisse donc le centre vite, le
+    cap lentement en ecartant les aberrations, et on reconstruit la pose
+    d'arret : centre - bras * (cos cap, sin cap).
+
+    Un vrai changement de face visee (un quart de tour) passe pour une
+    aberration ; il est accepte s'il persiste `switch_count` images.
+    """
+
+    # Seuil d'aberration large : le bruit reel est BIMODAL (+-8 degres, le
+    # detecteur bascule entre deux solutions), et un seuil a 15 degres calait
+    # le filtre sur l'un des modes en rejetant l'autre. Un changement de face
+    # fait 90 degres : 30 separe encore bien les deux.
+    def __init__(self, k_pos: float = 0.3, k_yaw: float = 0.1,
+                 outlier: float = math.radians(30.0), switch_count: int = 5):
+        self.k_pos, self.k_yaw, self.outlier, self.switch_count = k_pos, k_yaw, outlier, switch_count
+        self.cx = self.cy = self.yaw = self.lever = None
+        self.rejected = 0
+
+    def reset(self):
+        self.cx = self.cy = self.yaw = self.lever = None
+        self.rejected = 0
+
+    def update(self, centre: tuple[float, float], yaw: float, lever: float) -> None:
+        if self.cx is None:
+            self.cx, self.cy, self.yaw, self.lever = centre[0], centre[1], yaw, lever
+            return
+        k = self.k_pos
+        self.cx += k * (centre[0] - self.cx)
+        self.cy += k * (centre[1] - self.cy)
+        self.lever += k * (lever - self.lever)
+        err = wrap(yaw - self.yaw)
+        if abs(err) > self.outlier:
+            self.rejected += 1
+            if self.rejected >= self.switch_count:
+                self.yaw, self.rejected = yaw, 0
+            return
+        self.rejected = 0
+        self.yaw = wrap(self.yaw + self.k_yaw * err)
+
+    def target(self) -> Pose2D | None:
+        if self.cx is None:
+            return None
+        return Pose2D(self.cx - self.lever * math.cos(self.yaw),
+                      self.cy - self.lever * math.sin(self.yaw), self.yaw)

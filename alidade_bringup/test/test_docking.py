@@ -15,9 +15,14 @@ from alidade_bringup import docking as d
 DT = 0.05   # 20 Hz, la cadence du noeud
 
 
-def simulate(start, dock, g, lag=0.0, limit=40.0):
+TRACK = 0.1939       # entraxe (revision v1)
+DEADBAND = 0.03      # m/s par roue : en dessous, la roue ne tourne pas (mesure)
+
+
+def simulate(start, dock, g, lag=0.0, deadband=False, limit=40.0):
     """Robot unicycle ; `lag` : fraction de la commande precedente conservee
-    (inertie grossiere de la chaine lisseur + moteurs)."""
+    (inertie grossiere de la chaine lisseur + moteurs) ; `deadband` : chaque
+    roue commandee sous DEADBAND reste immobile, comme mesure sur le robot."""
     robot = start
     stager = d.Stager(dock.ahead(-g.staging), g) if d.staging_needed(robot, dock, g) else None
     v_prev = w_prev = 0.0
@@ -36,6 +41,10 @@ def simulate(start, dock, g, lag=0.0, limit=40.0):
         v = lag * v_prev + (1 - lag) * v
         w = lag * w_prev + (1 - lag) * w
         v_prev, w_prev = v, w
+        if deadband:
+            left, right = v - w * TRACK / 2, v + w * TRACK / 2
+            left, right = (0.0 if abs(x) < DEADBAND else x for x in (left, right))
+            v, w = (left + right) / 2, (right - left) / TRACK
         robot = d.Pose2D(robot.x + v * math.cos(robot.yaw) * DT,
                          robot.y + v * math.sin(robot.yaw) * DT,
                          robot.yaw + w * DT)
@@ -53,11 +62,11 @@ STARTS = [d.Pose2D(-dist, lat, math.radians(hdg))
                                                   [-45, -20, 0, 15, 45])]
 
 
-@pytest.mark.parametrize('lag', [0.0, 0.5])
-def test_arrivee_sur_la_ligne_dans_l_axe(lag):
+@pytest.mark.parametrize('lag,deadband', [(0.0, False), (0.5, False), (0.5, True)])
+def test_arrivee_sur_la_ligne_dans_l_axe(lag, deadband):
     g = d.Gains()
     for start in STARTS:
-        end, furthest, _ = simulate(start, DOCK, g, lag=lag)
+        end, furthest, _ = simulate(start, DOCK, g, lag=lag, deadband=deadband)
         along, lat, yaw = d.errors(end, DOCK)
         assert abs(lat) <= g.lat_tol, f'{start} : lateral {lat * 100:.1f} cm'
         assert abs(math.degrees(yaw)) <= math.degrees(g.arrive_yaw_tol), f'{start} : cap {math.degrees(yaw):.1f}'
@@ -99,3 +108,39 @@ def test_errors_dans_le_repere_de_la_pose_d_arret():
     assert along == pytest.approx(-0.2)
     assert lat == pytest.approx(-0.02)
     assert yaw == pytest.approx(0.0)
+
+
+# ----------------------------------------------------------------- filtre de la cible
+def test_filtre_attenue_le_bruit_de_cap_sans_biais():
+    import random
+    rng = random.Random(1)
+    f = d.TargetFilter()
+    lever, yaw = 0.245, math.radians(20)
+    lats = []
+    for i in range(60):
+        f.update((0.45, 0.05), yaw + math.radians(rng.choice([-8, 8]) + rng.gauss(0, 1)), lever)
+        if i >= 20:
+            t = f.target()
+            true = d.Pose2D(0.45 - lever * math.cos(yaw), 0.05 - lever * math.sin(yaw), yaw)
+            lats.append(abs(d.errors(t, true)[1]))
+    # Brut, +-8 degres au bout de 24.5 cm font 3.4 cm ; filtre, moins d'un.
+    assert max(lats) < 0.01
+
+
+def test_filtre_ecarte_une_aberration_isolee():
+    f = d.TargetFilter()
+    for _ in range(10):
+        f.update((0.4, 0.0), 0.0, 0.245)
+    f.update((0.4, 0.0), math.radians(90), 0.245)
+    assert abs(f.target().yaw) < 1e-9
+
+
+def test_filtre_accepte_un_changement_de_face_qui_persiste():
+    f = d.TargetFilter(switch_count=5)
+    for _ in range(10):
+        f.update((0.4, 0.0), 0.0, 0.245)
+    for _ in range(5):
+        f.update((0.4, 0.0), math.radians(90), 0.245)
+    assert f.target().yaw == pytest.approx(math.radians(90))
+    assert f.target().x == pytest.approx(0.4, abs=1e-9)
+    assert f.target().y == pytest.approx(-0.245)

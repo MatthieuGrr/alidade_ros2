@@ -24,7 +24,7 @@ import argparse
 import math
 import sys
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 
 import cv2
 import numpy as np
@@ -264,7 +264,9 @@ def cmd_fake_cube(args):
     (qui vaut le monde tant que le robot simule ne glisse pas), et chaque face
     est publiee sur /aruco_detections si elle regarde la camera et tient
     entiere dans l'image calibree. Cela exerce toute la chaine du docking :
-    cube_detector, cube_docking, gestionnaire de modes.
+    cube_detector, cube_docking, gestionnaire de modes. Les detections sont
+    publiees avec le retard mesure sur le robot (--latency), pour que la
+    compensation de cube_docking soit exercee comme en vrai.
     """
     import rclpy
     import tf2_ros
@@ -293,6 +295,7 @@ def cmd_fake_cube(args):
     pub = node.create_publisher(ArucoDetection, '/aruco_detections', 10)
     frame = 'camera_optical_frame'
     seen_before = None
+    pending = deque()       # (instant de l'image, detection) en attente de la latence
 
     def tick():
         nonlocal seen_before
@@ -321,7 +324,10 @@ def cmd_fake_cube(args):
         if ids != seen_before:
             print(f"faces vues : {ids or 'aucune'}", flush=True)
             seen_before = ids
-        pub.publish(msg)
+        now = rclpy.time.Time.from_msg(t.header.stamp).nanoseconds
+        pending.append((now, msg))
+        while pending and now - pending[0][0] >= args.latency * 1e9:
+            pub.publish(pending.popleft()[1])
 
     node.create_timer(1 / 15.0, tick)
     print(f'cube en ({args.x:.2f}, {args.y:.2f}) dans odom, cap {args.yaw:.0f} deg')
@@ -401,6 +407,7 @@ def main():
     f.add_argument('x', type=float)
     f.add_argument('y', type=float)
     f.add_argument('yaw', nargs='?', type=float, default=0.0, help='cap du cube, degres')
+    f.add_argument('--latency', type=float, default=0.35, help='retard des detections, s')
     f.set_defaults(func=cmd_fake_cube)
 
     args = ap.parse_args()

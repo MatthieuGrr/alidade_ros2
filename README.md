@@ -236,8 +236,8 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    pousse ses buts nav2, publie `/exploration_complete` quand il n'y a plus
    de frontière et rentre au point de départ ; le gestionnaire sauvegarde
    alors la carte sous `exploration_<date>` et repasse en `MAPPING`) et
-   `DOCKING` 5 (réservé). `TELEOP` **préserve** la source de localisation en
-   cours : conduire à la main au milieu d'une cartographie puis y revenir
+   `DOCKING` 5 (approche du cube, voir plus bas). `TELEOP` et `DOCKING`
+   **préservent** la source de localisation en cours : conduire à la main au milieu d'une cartographie puis y revenir
    reprend la même carte, et l'exploration repart où elle en était. Une seule
    source de `map → odom` à la fois, et nav2 ne tourne que quand ce repère
    existe dans un mode qui navigue : sans cette règle sa costmap globale
@@ -253,11 +253,39 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    d'`alidade_ros2`, servi par le robot, rosbridge sur le port 5001) avec un
    profil opérateur (`alidade_ui/config/operator.json`) : widget **Alidade**
    (mode et sous-état, boutons de mode, choix et sauvegarde de carte,
-   localisation, nav2, capteurs, santé), carte, scan, TF, pose initiale,
-   but, joystick sur `/cmd_vel_smoothed`, caméra, diagnostics. Le widget
+   localisation, nav2, capteurs, santé, et en DOCKING le bouton Dégager),
+   carte, scan, TF, pose initiale, but, joystick sur `/cmd_vel_nav`,
+   caméra, cube détecté (`/cube/markers`), diagnostics. Le widget
    Alidade vit dans `alidade_ui/templates/alidade/` ; `sources.sh` le lie
    dans le dossier `public` de Vizanti, seul endroit où le serveur cherche
    ses templates.
+
+   **Docking sur le cube** (`DOCKING` 5) : amener le robot à portée, cube
+   dans le champ et à moins de ~12° de l'axe, de 8 à 42 cm devant ; puis le
+   bouton DOCKING du widget Alidade (ou `set_mode` 5). Refusé si le cube
+   n'est pas vu. Le robot s'arrête à **10 cm** de la face du cube la plus
+   tournée vers lui, dans son axe ; « Dégager » le fait reculer de 15 cm,
+   et redemander DOCKING relance une approche. Deux nœuds :
+   - `cube_detector.py` : pose du cube depuis les faces vues, et pose
+     d'arrêt de `base_footprint` devant la face visée (`/cube/dock_pose`,
+     `/cube/center`, marqueurs `/cube/markers` pour Vizanti : cube orange,
+     rouge si ses faces se contredisent, flèche verte à la pose d'arrêt) ;
+   - `cube_docking.py` : actions `/dock_robot` et `/undock_robot` (types
+     `nav2_msgs`). Mise en place à l'odométrie dans l'axe de la face, 20 cm
+     en retrait, si le robot en est trop loin ; puis approche asservie sur la
+     vision jusqu'à la **ligne** d'arrêt ; contrôle de l'arrivée, reprise si
+     hors tolérance (1,5 cm, 5°).
+
+   Réglages dans `alidade_bringup/config/docking.yaml`, logique testée sans
+   ROS dans `alidade_bringup/docking.py` et `cube.py`. Essais sur le robot
+   le 11 sept. 2026, tous réussis du premier coup : départ dans l'axe,
+   arrivée à 1 mm et 1,1° en 2,9 s ; départ à 9° et 3,4 cm, 2 mm et 1,0° en
+   3,0 s ; départ décalé de 7,7 cm (mise en place), 8 mm et 4,2° en 8,5 s.
+   Écart final mesuré par la caméra : 10,4 à 10,6 cm.
+
+   Sans robot, `aruco_bench.py fake-cube <x> <y> <cap>` publie en simulation
+   les détections d'un cube posé dans `odom`, avec la latence mesurée sur le
+   robot : toute la chaîne se rejoue dans Gazebo.
 
 5. **Au boot** : `sudo systemctl enable --now alidade`. Les arguments du
    launch se règlent dans `/etc/default/alidade`. Journaux :
@@ -289,13 +317,17 @@ tournent donc en Jazzy dans Docker, la même distribution que le Pi.
 ./alidade_viz/docker/run.sh up           # conteneur + colcon build
 ./alidade_viz/docker/run.sh rviz nav     # face au robot réel
 ./alidade_viz/docker/run.sh sim nav:=true               # simulation, terminal 1
-./alidade_viz/docker/run.sh rviz nav use_sim_time:=true # terminal 2
+./alidade_viz/docker/run.sh rviz nav use_sim_time:=true # terminal 2 (domaine de la simulation)
 ./alidade_viz/docker/run.sh teleop
 ./alidade_viz/docker/run.sh test
 ```
 
 Le conteneur est en `--net=host` et source `system/env/alidade_env.sh`
-comme le Pi.
+comme le Pi. La **simulation**, et le rviz qui la regarde, tournent sur un
+domaine DDS à part (17) sans le robot pour pair : sur le domaine du robot,
+les commandes de vitesse simulées (nav2, docking) atteindraient ses moteurs
+dès qu'il est allumé. Un script qui lance la simulation à la main doit
+faire de même (`ROS_DOMAIN_ID=17 ALIDADE_ROBOT_HOST=127.0.0.1`).
 
 `ros2 run alidade_sim measure_odom.py` compare l'odométrie à la vérité
 terrain lue avec `gz model -m alidade -p` : −0.1 % en ligne droite, −2.1 % en
@@ -505,6 +537,23 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   le compteur ne voyait **rien** passer alors que le flux tournait. La
   supervision surveille donc `/camera/camera_info`, quelques centaines
   d'octets publiés en continu par le pilote.
+- **Les moteurs ne tiennent pas les basses vitesses.** Consigne tenue 2 s,
+  mesuré le 11 sept. 2026 : 0,15 rad/s ne fait rien, 0,25 rad/s donne
+  0,08 ; 2 cm/s donne 0,6 cm/s, et à 1,5 ou 4 cm/s une roue démarre avant
+  l'autre (7 à 9° de dérive). Fiable à partir de 0,45 rad/s et 5 cm/s : ce
+  sont les planchers du docking. Le vrai remède est dans le firmware du
+  Pico (compensation de zone morte).
+- **usb_cam date ses images d'environ 0,5 s trop tôt.** Âge apparent d'une
+  détection à sa réception : 790 ms, très stable ; latence réelle, mesurée
+  par une rotation sur place (instant où l'odométrie voit le mouvement, puis
+  la caméra) : environ 300 ms. Tout ce qui recale une détection sur le
+  mouvement du robot doit donc partir de l'heure de réception moins la
+  latence mesurée (`detection_latency`), jamais de l'horodatage de l'image.
+- Le cap d'une face de cube vue seule **bascule de ±8°** d'une image à
+  l'autre, alors que son centre est stable à 1-2 mm. Une pose d'arrêt à
+  25 cm du centre change ces 8° en 3 cm latéraux : le docking lisse donc le
+  centre et le cap séparément (`docking.TargetFilter`), avec un seuil
+  d'aberration large, car ce bruit est bimodal.
 - La pose d'un marqueur plan **seul** est ambiguë : deux solutions PnP
   presque équivalentes, entre lesquelles le détecteur bascule d'une image à
   l'autre. Mesuré sur le cube immobile à 43 cm : distance stable à ±1,3 mm,

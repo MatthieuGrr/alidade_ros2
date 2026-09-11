@@ -23,10 +23,12 @@ cube_docking:
     # Mise en place 20 cm en retrait de l'arret, soit 30 cm d'ecart : le cube
     # y est au milieu du champ, et l'approche finale presque droite.
     staging: 0.20
+    # Planchers mesures sur le robot : en dessous, les roues calent ou
+    # demarrent l'une apres l'autre (voir alidade_bringup/docking.py).
     v_max: 0.08                   # m/s
-    v_min: 0.02                   # m/s, en dessous les moteurs calent
+    v_min: 0.05                   # m/s
     w_max: 0.8                    # rad/s
-    w_min: 0.25                   # rad/s, pour que les pivots aboutissent
+    w_min: 0.45                   # rad/s
     k_v: 1.0                      # 1/s, ralentissement a l'approche d'un point
     k_yaw: 2.0                    # 1/s, correction de cap
     k_lat: 10.0                   # 1/m, ecart lateral -> cap de rattrapage
@@ -34,7 +36,15 @@ cube_docking:
     yaw_tolerance_deg: 5.0        # ... sinon reprise depuis la mise en place
     max_retries: 2
     detection_timeout: 1.0        # s sans detection : cube perdu
-    filter_coef: 0.3              # lissage de la cible dans odom, a 15 Hz
+    # Age reel d'une detection a sa reception, MESURE par une rotation sur
+    # place (debut du mouvement vu par l'odometrie, puis par la camera). On ne
+    # se sert PAS de l'horodatage de l'image : usb_cam la date d'environ 0.5 s
+    # trop tot (790 ms d'age apparent pour 300 ms reels).
+    detection_latency: 0.35
+    # Lissage de la cible dans odom, a 15 Hz : centre du cube vite, cap de la
+    # face lentement (il bascule de +-8 degres d'une image a l'autre).
+    filter_position: 0.3
+    filter_yaw: 0.1
     undock_distance: 0.15         # m, recul du degagement
     stage_timeout: 30.0
     rate: 20.0

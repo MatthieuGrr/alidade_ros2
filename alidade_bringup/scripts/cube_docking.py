@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Docking sur le cube : actions /dock_robot et /undock_robot (nav2_msgs).
 
-    /cube/dock_pose (base_footprint, instant de l'image) --+
-    /diff_drive_controller/odom ---------------------------+--> /cmd_vel_nav
+    /cube/dock_pose, /cube/center (base_footprint) --+
+    /diff_drive_controller/odom ---------------------+--> /cmd_vel_nav
 
 Les types d'action sont ceux du serveur de docking de nav2, pour qu'un
 client (le gestionnaire de modes) n'ait pas a savoir qui les sert ; la
@@ -12,9 +12,11 @@ les autres.
 
 Chaque pose d'arret detectee est ramenee dans odom avec la pose du robot a
 l'instant de l'IMAGE, prise dans un historique de l'odometrie : sans cela,
-les 100 a 200 ms de latence de la detection deplaceraient la cible d'autant
-de chemin parcouru. Le cube etant immobile, la cible est ensuite lissee dans
-odom.
+les ~300 ms de latence de la detection deplaceraient la cible d'autant de
+chemin parcouru. Cet instant est l'heure de RECEPTION moins la latence
+mesuree (detection_latency), et non l'horodatage de l'image, qu'usb_cam
+decale d'environ 0.5 s. Le cube etant immobile, la cible est ensuite lissee
+dans odom, centre et cap separement (docking.TargetFilter explique pourquoi).
 """
 import math
 import threading
@@ -22,7 +24,7 @@ import time
 from collections import deque
 
 import rclpy
-from geometry_msgs.msg import PoseStamped, Twist, Vector3
+from geometry_msgs.msg import PointStamped, PoseStamped, Twist, Vector3
 from nav2_msgs.action import DockRobot, UndockRobot
 from nav_msgs.msg import Odometry
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
@@ -62,21 +64,22 @@ class CubeDocking(Node):
         super().__init__('cube_docking')
         p = lambda name, default: self.declare_parameter(name, default).value
         self.g = docking.Gains(
-            staging=p('staging', 0.20), v_max=p('v_max', 0.08), v_min=p('v_min', 0.02),
-            w_max=p('w_max', 0.8), w_min=p('w_min', 0.25), k_v=p('k_v', 1.0),
+            staging=p('staging', 0.20), v_max=p('v_max', 0.08), v_min=p('v_min', 0.05),
+            w_max=p('w_max', 0.8), w_min=p('w_min', 0.45), k_v=p('k_v', 1.0),
             k_yaw=p('k_yaw', 2.0), k_lat=p('k_lat', 10.0),
             lat_tol=p('lateral_tolerance', 0.015),
             arrive_yaw_tol=math.radians(p('yaw_tolerance_deg', 5.0)))
         self.rate = p('rate', 20.0)
         self.detection_timeout = p('detection_timeout', 1.0)
-        self.filter_coef = p('filter_coef', 0.3)
+        self.latency_ns = int(p('detection_latency', 0.35) * 1e9)
+        self.filter = docking.TargetFilter(k_pos=p('filter_position', 0.3), k_yaw=p('filter_yaw', 0.1))
         self.max_retries = p('max_retries', 2)
         self.undock_distance = p('undock_distance', 0.15)
         self.stage_timeout = p('stage_timeout', 30.0)
 
         self.lock = threading.Lock()
         self.odom = deque(maxlen=150)          # (ns, Pose2D), 3 s a 50 Hz
-        self.target = None                     # pose d'arret lissee, dans odom
+        self.centre = None                     # (x, y) du cube dans base_footprint, dernier recu
         self.seen_at = None                    # derniere detection, horloge ROS
         # Delais sur l'horloge ROS, pas sur l'horloge murale : en simulation,
         # le temps simule peut aller cinq fois moins vite.
@@ -84,6 +87,7 @@ class CubeDocking(Node):
 
         group = ReentrantCallbackGroup()
         self.create_subscription(Odometry, '/diff_drive_controller/odom', self.on_odom, 20, callback_group=group)
+        self.create_subscription(PointStamped, '/cube/center', self.on_centre, 10, callback_group=group)
         self.create_subscription(PoseStamped, '/cube/dock_pose', self.on_dock_pose, 10, callback_group=group)
         self.cmd = self.create_publisher(Twist, '/cmd_vel_nav', 10)
         for action, name, run in ((DockRobot, 'dock_robot', self.run_dock),
@@ -107,20 +111,25 @@ class CubeDocking(Node):
                 return self.odom[-1][1]
             return min(self.odom, key=lambda e: abs(e[0] - stamp_ns))[1]
 
+    def on_centre(self, msg):
+        with self.lock:
+            self.centre = (msg.point.x, msg.point.y)
+
     def on_dock_pose(self, msg):
-        robot = self.robot_at(rclpy.time.Time.from_msg(msg.header.stamp).nanoseconds)
-        if robot is None:
+        robot = self.robot_at(self.get_clock().now().nanoseconds - self.latency_ns)
+        with self.lock:
+            centre = self.centre
+        if robot is None or centre is None:
             return
         p = msg.pose
-        seen = compose(robot, Pose2D(p.position.x, p.position.y, yaw_of(p.orientation)))
+        dock = Pose2D(p.position.x, p.position.y, yaw_of(p.orientation))
+        lever = math.hypot(centre[0] - dock.x, centre[1] - dock.y)
+        c = compose(robot, Pose2D(centre[0], centre[1], 0.0))
         now = self.now()
         with self.lock:
-            t, k = self.target, self.filter_coef
-            if t is None or self.seen_at is None or now - self.seen_at > 2 * self.detection_timeout:
-                self.target = seen
-            else:
-                self.target = Pose2D(t.x + k * (seen.x - t.x), t.y + k * (seen.y - t.y),
-                                     docking.wrap(t.yaw + k * docking.wrap(seen.yaw - t.yaw)))
+            if self.seen_at is None or now - self.seen_at > 2 * self.detection_timeout:
+                self.filter.reset()     # cube perdu longtemps : on repart de zero
+            self.filter.update((c.x, c.y), docking.wrap(robot.yaw + dock.yaw), lever)
             self.seen_at = now
 
     def now(self) -> float:
@@ -131,7 +140,11 @@ class CubeDocking(Node):
         with self.lock:
             if self.seen_at is None or now - self.seen_at > self.detection_timeout:
                 return None
-            return self.target
+            return self.filter.target()
+
+    def last_target(self) -> Pose2D | None:
+        with self.lock:
+            return self.filter.target()
 
     # ------------------------------------------------------------------ actions
     def on_goal(self, _goal):
@@ -188,7 +201,7 @@ class CubeDocking(Node):
                         self.stop()
                         self.get_logger().warn(f'{why}, reprise')
                         continue
-                    robot, target = self.robot_at(), self.fresh_target() or self.target
+                    robot, target = self.robot_at(), self.fresh_target() or self.last_target()
                     if docking.arrived_ok(robot, target, self.g):
                         along, lat, yaw = docking.errors(robot, target)
                         self.get_logger().info(
@@ -215,7 +228,7 @@ class CubeDocking(Node):
                 return result
 
     def dock_once(self, handle, feedback, retry: bool):
-        target = self.fresh_target() or (self.target if retry else None)
+        target = self.fresh_target() or (self.last_target() if retry else None)
         if target is None:
             raise Failure(RES.FAILED_TO_DETECT_DOCK, 'cube non vu')
         if docking.staging_needed(self.robot_at(), target, self.g):

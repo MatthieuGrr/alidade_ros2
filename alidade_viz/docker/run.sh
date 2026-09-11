@@ -17,6 +17,11 @@
 # Multi-machines : le conteneur est en --net=host et source system/env/alidade_env.sh,
 # comme le Pi. ALIDADE_ROBOT_HOST (defaut alidade.local) est resolu ici, sur
 # l'hote, parce que le conteneur ne sait pas resoudre les noms mDNS.
+#
+# La SIMULATION, et le rviz qui la regarde (use_sim_time:=true), tournent sur
+# un domaine DDS a part et sans le robot pour pair : sur le domaine du robot,
+# les commandes de vitesse simulees (docking, nav2) atteindraient ses moteurs
+# des qu'il est allume.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -24,6 +29,7 @@ IMAGE=alidade:jazzy
 NAME=alidade_jazzy
 XAUTH="$HOME/.docker.xauth"
 ROBOT_HOST="${ALIDADE_ROBOT_HOST:-alidade.local}"
+SIM_DOMAIN=17                       # jamais celui du robot (7, system/env/alidade_env.sh)
 
 setup_xauth() {
   rm -f "$XAUTH"; touch "$XAUTH"
@@ -40,6 +46,13 @@ in_container() {
   # Environnement complet : ROS, workspace, DDS multi-machines.
   docker exec -it \
     -e ALIDADE_ROBOT_HOST="$(resolve_robot)" \
+    "$NAME" bash -lc "source /ws/install/setup.bash && source /ws/src/alidade_ros2/system/env/alidade_env.sh && $*"
+}
+
+in_sim() {
+  # Simulation isolee : domaine a part, pas de pair distant.
+  docker exec -it \
+    -e ROS_DOMAIN_ID="$SIM_DOMAIN" -e ALIDADE_ROBOT_HOST=127.0.0.1 \
     "$NAME" bash -lc "source /ws/install/setup.bash && source /ws/src/alidade_ros2/system/env/alidade_env.sh && $*"
 }
 
@@ -65,11 +78,12 @@ case "${1:-up}" in
     ;;
   rviz)
     view="${2:-robot}"; shift; [ $# -gt 0 ] && shift
-    in_container "ros2 launch alidade_viz rviz.launch.py view:=$view $*"
+    if [[ " $* " == *"use_sim_time:=true"* ]]; then run=in_sim; else run=in_container; fi
+    $run "ros2 launch alidade_viz rviz.launch.py view:=$view $*"
     ;;
   sim)
     shift
-    in_container "ros2 launch alidade_sim sim.launch.py $*"
+    in_sim "ros2 launch alidade_sim sim.launch.py $*"
     ;;
   teleop)
     in_container "ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p stamped:=true -p frame_id:=base_footprint -r cmd_vel:=/diff_drive_controller/cmd_vel"
