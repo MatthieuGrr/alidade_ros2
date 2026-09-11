@@ -101,7 +101,11 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    se consomme telle quelle. Sans `/dev/camera`, le launch le dit et continue
    sans caméra.
 
-   **Calibration de la caméra**, une fois, mise au point fixe comme en marche.
+   **Mise au point et calibration de la caméra**, à refaire à chaque
+   changement de support ou de mise au point : la focale de la C920 varie de
+   8 % sur la course de mise au point, une calibration ne vaut que pour la
+   valeur `camera.focus` avec laquelle elle a été faite.
+
    La mire se génère aux cotes exactes — damier plutôt que ChArUco, dont les
    marqueurs 4x4 seraient confondus avec les faces du cube :
    ```bash
@@ -110,15 +114,36 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    L'imprimer **à 100 %**, sans « ajuster à la page », vérifier au réglet que
    les 9 cases font bien 225 mm entre les deux traits, et la coller sur un
    support rigide : une feuille qui gondole fausse la distorsion sans que
-   rien ne le signale. Puis :
+   rien ne le signale.
+
+   *Mise au point*, sur le robot, mire tenue immobile bien en face de la
+   caméra (donc penchée de 25°), à deux distances qui encadrent l'usage :
    ```bash
-   ros2 run camera_calibration cameracalibrator --size 8x6 --square 0.025 \
-       --no-service-check image:=/camera/image_raw
+   ros2 run alidade_bringup camera_bench.py focus 0 10 20 25 30 35 40 50 60
    ```
-   Le YAML produit remplace `alidade_description/config/camera_v1.yaml`
-   (provisoire : focale nominale, sans distorsion) ; reporter ensuite
-   `2·atan(w/2fx)` dans `camera.sim_horizontal_fov` pour que Gazebo voie
-   la même ouverture.
+   Retenir la valeur qui reste la plus nette aux deux distances. Mesuré le
+   11 sept. 2026 : optimum 35 à 30 cm, 25 à 51 cm, d'où `focus: 30`.
+
+   *Calibration*, sur le poste : le calibrateur a besoin d'un écran, et
+   l'image brute ne passe pas proprement en WiFi. On relaie donc le JPEG,
+   décodé localement, avec une qualité montée à 95 le temps de l'opération :
+   ```bash
+   ros2 param set /camera/usb_cam .image_raw.compressed.jpeg_quality 95   # sur le robot
+   ros2 run alidade_bringup camera_bench.py relay                         # poste, terminal 1
+   ros2 run camera_calibration cameracalibrator --size 8x6 --square 0.025 \
+       --no-service-check --ros-args -r image:=/calib/image               # poste, terminal 2
+   ```
+   Couvrir toute l'image, **coins compris**, à plusieurs distances et avec
+   des inclinaisons de 30 à 45°, en marquant un temps d'arrêt à chaque pose.
+   Puis **CALIBRATE**, et **SAVE** (pas COMMIT, qui voudrait écrire dans le
+   pilote) : l'archive `/tmp/calibrationdata.tar.gz` contient `ost.yaml` et
+   les vues retenues. `ost.yaml` remplace
+   `alidade_description/config/camera_v1.yaml`, en gardant
+   `camera_name: alidade_c920` ; reporter ensuite `2·atan(w/2fx)` dans
+   `camera.sim_horizontal_fov` pour que Gazebo voie la même ouverture.
+   Résultat du 11 sept. 2026 : 0,32 px de reprojection sur 45 vues,
+   fx = 644,5 px — et non les 530 nominaux, ni les 690 estimés auparavant
+   en autofocus.
 
    **Marqueurs ArUco** (`aruco:=true`, actif par défaut avec la caméra). Le
    détecteur est composé dans le même conteneur que la caméra, donc les
@@ -137,8 +162,9 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    parfaites : 0,15 à 1,5 m, la limite basse venant du champ de vision et la
    haute d'un côté apparent tombé à 14 px. Sur un cube posé au sol, la
    caméra étant fixe, inclinée de 25° et son axe optique à 10,3 cm du sol, le
-   cube reste entier dans l'image de **11 à 55 cm** devant le châssis (focale
-   mesurée, fy ≈ 690 px). Au-delà, il faut le chercher au LiDAR ou sur la
+   cube reste entier dans l'image de **11 à ~70 cm** devant le châssis
+   (focale calibrée, fy = 646 px ; la limite lointaine bouge de 15 à 20 cm
+   par degré de montage). Au-delà, il faut le chercher au LiDAR ou sur la
    carte ; en deçà, l'approche finale se fait à l'odométrie.
 
    **Vérifier que le support de caméra est conforme à la CAO.** L'URDF le

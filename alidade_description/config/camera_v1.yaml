@@ -1,33 +1,39 @@
 # Intrinseques de la C920 (revision v1), format camera_info_manager, charge par
 # usb_cam via camera_info_url. Decrit l'image du pilote, en 640x480.
 #
-# PROVISOIRE : valeurs nominales (focale ~530 px pour ~62 deg d'ouverture, point
-# principal au centre, sans distorsion), en attendant le passage de la mire
-# avec camera_calibration sur /camera/image_raw. Suffisant pour afficher et pour
-# tester la chaine, pas pour mesurer une pose de marqueur.
+# Calibration du 11 sept. 2026 (camera_calibration, damier 8x6 coins de 25 mm),
+# mise au point FIXE a focus 30 : la focale varie de 8 % sur la course de mise
+# au point, toute autre valeur de camera.focus rend ce fichier faux.
+#   45 vues, mire de 29 a 66 cm, inclinee jusqu'a 50 deg
+#   reprojection 0.32 px RMS (mediane par vue 0.21 px)
+#   deux demi-echantillons : fx a 0.4 % pres, point principal a 3 px pres
+# Les coins de l'image sont peu couverts (une quarantaine de points chacun
+# contre 600 au centre) : k3 reste fixe a 0, ce que fait camera_calibration,
+# car libre il part a 0.5 sans que les donnees le justifient.
+# Ouverture : 52.8 deg en horizontal, 40.7 deg en vertical.
 image_width: 640
 image_height: 480
 camera_name: alidade_c920
 camera_matrix:
   rows: 3
   cols: 3
-  data: [530.0, 0.0, 320.0,
-         0.0, 530.0, 240.0,
-         0.0, 0.0, 1.0]
+  data: [644.52243,   0.     , 332.83802,
+           0.     , 646.1541 , 237.3482 ,
+           0.     ,   0.     ,   1.     ]
 distortion_model: plumb_bob
 distortion_coefficients:
   rows: 1
   cols: 5
-  data: [0.0, 0.0, 0.0, 0.0, 0.0]
+  data: [0.005092, -0.071562, 0.000762, 0.001594, 0.000000]
 rectification_matrix:
   rows: 3
   cols: 3
-  data: [1.0, 0.0, 0.0,
-         0.0, 1.0, 0.0,
-         0.0, 0.0, 1.0]
+  data: [1., 0., 0.,
+         0., 1., 0.,
+         0., 0., 1.]
 projection_matrix:
   rows: 3
   cols: 4
-  data: [530.0, 0.0, 320.0, 0.0,
-         0.0, 530.0, 240.0, 0.0,
-         0.0, 0.0, 1.0, 0.0]
+  data: [641.31464,   0.     , 333.28957,   0.     ,
+           0.     , 644.49786, 237.05158,   0.     ,
+           0.     ,   0.     ,   1.     ,   0.     ]

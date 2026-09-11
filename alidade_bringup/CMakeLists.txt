@@ -14,6 +14,7 @@ install(PROGRAMS
   scripts/system_monitor.py
   scripts/mode_manager.py
   scripts/aruco_bench.py
+  scripts/camera_bench.py
   DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)

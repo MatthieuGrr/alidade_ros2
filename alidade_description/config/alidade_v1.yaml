@@ -177,11 +177,13 @@ lidar:
 # capteur tel quel : pas de mount_rpy, et l'image du pilote se consomme
 # directement.
 #
-# Champ utile : avec la focale mesurée (fy ≈ 690 px, demi-ouverture verticale
-# ≈ 19°) et l'axe optique à 103 mm du sol, un cube de 50 mm posé au sol reste
-# entier dans l'image de 11 à 55 cm devant le châssis. C'est voulu : la caméra
-# ne sert qu'à l'approche finale, la recherche lointaine est l'affaire du
-# LiDAR et de la carte.
+# Champ utile : avec la focale calibrée (fy = 646 px, demi-ouverture verticale
+# 20.4°) et l'axe optique à 103 mm du sol, un cube de 50 mm posé au sol reste
+# entier dans l'image de 11 à ~70 cm devant le châssis. La limite lointaine
+# tient au bord haut du champ, qui ne plonge plus que de 4.6° : un degré de
+# montage la déplace de 15 à 20 cm. C'est voulu : la caméra ne sert qu'à
+# l'approche finale, la recherche lointaine est l'affaire du LiDAR et de la
+# carte.
 camera:
   frame: camera_optical_frame
   device: /dev/camera          # règle udev, index 0 de la C920 (l'index 1 est la métadonnée)
@@ -192,18 +194,22 @@ camera:
                                # en réencode un JPEG sur /camera/image_raw/compressed
   # Mise au point FIXE : en autofocus la C920 change ses intrinsèques en
   # permanence et la calibration ne vaudrait rien. focus est le focus_absolute
-  # V4L2 (0..250 par pas de 5) ; 50 vise 0.3-1 m, à régler à la calibration.
+  # V4L2 (0..250 par pas de 5, 0 = l'infini). Réglé le 11 sept. 2026 par
+  # balayage, netteté de la mire mesurée : optimum 35 à 30 cm, 25 à 51 cm ;
+  # 30 garde plus de 83 % de l'optimum aux deux distances. Toute nouvelle
+  # valeur impose de refaire la calibration : la focale varie de 8 % sur la
+  # course de mise au point.
   autofocus: false
-  focus: 50
+  focus: 30
   brightness: 128              # défaut de la C920 ; celui d'usb_cam (50) assombrit l'image
   power_line_hz: 50            # secteur français : l'anti-scintillement d'usine est à 60 Hz
   # Calibration (fichier camera_info_manager) : provisoire tant que la mire n'est
   # pas passée, voir README.
   calibration: camera_v1.yaml
-  # Simulation seulement : ouverture horizontale du capteur Gazebo. La C920
-  # annonce 78° en diagonale à 16:9 ; en 4:3 (640×480) on retombe vers 60°.
-  # À remplacer par la valeur issue de la calibration (2·atan(w/2fx)).
-  sim_horizontal_fov: 1.05
+  # Simulation seulement : ouverture horizontale du capteur Gazebo, tirée de
+  # la calibration, 2·atan(w/2fx) avec fx = 644.5 px (52.8°). À recalculer
+  # avec toute nouvelle calibration.
+  sim_horizontal_fov: 0.922
 
 # BNO055 en mode IMU (6 axes, magnétomètre coupé). Le Pico transmet les
 # entiers bruts ; la conversion SI se fait côté Pi avec ces facteurs

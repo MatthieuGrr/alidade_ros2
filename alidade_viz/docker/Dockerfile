@@ -20,8 +20,9 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
       ros-jazzy-navigation2 \
       ros-jazzy-rplidar-ros \
       ros-jazzy-usb-cam \
-      ros-jazzy-image-rotate \
       ros-jazzy-image-transport-plugins \
+      ros-jazzy-camera-calibration \
+      ros-jazzy-rqt-image-view \
       ros-jazzy-aruco-opencv \
       ros-jazzy-aruco-opencv-msgs \
       ros-jazzy-rmw-cyclonedds-cpp \

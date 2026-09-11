@@ -13,9 +13,9 @@ autre. 'sweep' se passe de ROS et mesure directement dans OpenCV la portee et
 l'erreur de distance ; c'est lui qui a justifie l'affinement sous-pixellique
 des coins (voir alidade_bringup/config/aruco.yaml).
 
-ATTENTION : les distances ne valent que ce que valent les intrinseques. Tant
-que camera_v1.yaml n'a pas ete remplace par une vraie calibration a la mire,
-elles portent un biais d'echelle et ignorent la distorsion.
+ATTENTION : sur le robot, les distances ne valent que ce que valent les
+intrinseques de camera_v1.yaml, donc la calibration a la mire et la mise au
+point avec laquelle elle a ete faite (voir camera_bench.py).
 """
 from __future__ import annotations
 
@@ -28,9 +28,9 @@ from collections import defaultdict
 import cv2
 import numpy as np
 
-# Intrinseques nominales, les memes que camera_v1.yaml : les images de synthese
-# sont generees et interpretees avec, si bien qu'un ecart mesure ne vient que
-# de la localisation des coins, jamais de la calibration.
+# Intrinseques de synthese, volontairement independantes de camera_v1.yaml :
+# les images sont generees et interpretees avec, si bien qu'un ecart mesure ne
+# vient que de la localisation des coins, jamais de la calibration.
 W, H, FX, CX, CY = 640, 480, 530.0, 320.0, 240.0
 SIDE = 0.040          # cote du carre NOIR, comme marker_size
 
