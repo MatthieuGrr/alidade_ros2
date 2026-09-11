@@ -66,10 +66,11 @@ def test_reperes_conformes_a_la_description_du_cube(cube):
     assert np.allclose(par_nom['devant'], [1, 0, 0])
     assert np.allclose(par_nom['gauche'], [0, 1, 0])
     assert np.allclose(par_nom['haut'], [0, 0, 1])
-    # Les faces verticales ont leur motif droit ; dessus et dessous pointent
-    # vers l'avant du cube.
+    # Les faces verticales ont leur motif droit. Le dessus a son motif vers la
+    # gauche (mesure sur le cube reel), le dessous vers l'avant (tel que decrit,
+    # pas encore verifie).
     par_id = {f['nom']: np.array(f['up'], float) for f in cube['faces']}
     for nom in ('devant', 'derriere', 'gauche', 'droite'):
         assert np.allclose(par_id[nom], [0, 0, 1]), f'{nom} : haut du motif attendu vers le haut'
-    for nom in ('haut', 'bas'):
-        assert np.allclose(par_id[nom], [1, 0, 0]), f'{nom} : haut du motif attendu vers l avant'
+    assert np.allclose(par_id['haut'], [0, 1, 0]), 'haut : motif attendu vers la gauche'
+    assert np.allclose(par_id['bas'], [1, 0, 0]), 'bas : motif attendu vers l avant'

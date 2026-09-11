@@ -29,6 +29,7 @@
   <exec_depend>image_transport_plugins</exec_depend>
   <exec_depend>aruco_opencv</exec_depend>
   <exec_depend>aruco_opencv_msgs</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
   <exec_depend>rclcpp_components</exec_depend>
   <exec_depend>diagnostic_msgs</exec_depend>
   <exec_depend>diagnostic_aggregator</exec_depend>

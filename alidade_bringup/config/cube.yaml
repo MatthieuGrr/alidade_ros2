@@ -16,10 +16,17 @@
 # L'axe x du marqueur s'en deduit par x = up ^ normal, et le centre de la face
 # vaut normal * edge/2. Le rendu de aruco_bench.py cube permet de verifier
 # l'ensemble d'un coup d'oeil.
+#
+# MESURE sur le cube reel le 11 sept. 2026, faces 1 et 4 vues ensemble : le
+# motif du dessus a son haut vers la GAUCHE (face 5), et non vers l'avant
+# comme decrit au depart. Les deux faces s'accordaient a 1 mm en position mais
+# a 92 deg en orientation ; la face 4 donnait un cube bien droit, c'est donc la
+# 1 qui etait mal decrite. La face 6 (dessous) n'a pas encore ete verifiee :
+# cube_detector.py affiche le cube en rouge quand des faces se contredisent.
 edge: 0.050
 marker_size: 0.040
 faces:
-  - {id: 1, nom: haut,     normal: [0.0, 0.0, 1.0],  up: [1.0, 0.0, 0.0]}
+  - {id: 1, nom: haut,     normal: [0.0, 0.0, 1.0],  up: [0.0, 1.0, 0.0]}
   - {id: 2, nom: devant,   normal: [1.0, 0.0, 0.0],  up: [0.0, 0.0, 1.0]}
   - {id: 3, nom: droite,   normal: [0.0, -1.0, 0.0], up: [0.0, 0.0, 1.0]}
   - {id: 4, nom: derriere, normal: [-1.0, 0.0, 0.0], up: [0.0, 0.0, 1.0]}

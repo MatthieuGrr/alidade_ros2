@@ -15,6 +15,7 @@ install(PROGRAMS
   scripts/mode_manager.py
   scripts/aruco_bench.py
   scripts/camera_bench.py
+  scripts/cube_detector.py
   DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
@@ -23,6 +24,7 @@ if(BUILD_TESTING)
   ament_add_pytest_test(test_telemetry test/test_telemetry.py)
   ament_add_pytest_test(test_modes test/test_modes.py)
   ament_add_pytest_test(test_cube test/test_cube.py)
+  ament_add_pytest_test(test_cube_pose test/test_cube_pose.py)
 endif()
 
 ament_package()
