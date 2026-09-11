@@ -31,7 +31,7 @@ alidade_ros2/
  │  ├ joint_state_broadcaster ──/joint_states            │
  │  └ imu_sensor_broadcaster ──/imu/data_raw             │
  │ nav2 (6 nœuds) ──Twist──▶ cmd_vel_stamper ──TwistStamped──▶ diff_drive_controller
- │ usb_cam ──/camera/image + camera_info──▶ aruco_tracker ──/aruco_detections + TF
+ │ usb_cam ──/camera/image_raw + camera_info──▶ aruco_tracker ──/aruco_detections + TF
  │ system_monitor (Pi, cadences) ─┐
  │ PicoSystem, nav2 ──/diagnostics─┴─▶ diagnostic_aggregator ──/diagnostics_agg
  └──────────────────────────────────────────────────────┘
@@ -97,8 +97,8 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    `telemetry` de la révision.
 
    La caméra est montée à l'endroit, inclinée de 25° vers le sol :
-   `/camera/image` sort du pilote dans le repère optique de la CAO et se
-   consomme telle quelle. Sans `/dev/camera`, le launch le dit et continue
+   `/camera/image_raw` sort du pilote dans le repère optique de la CAO et
+   se consomme telle quelle. Sans `/dev/camera`, le launch le dit et continue
    sans caméra.
 
    **Calibration de la caméra**, une fois, mise au point fixe comme en marche.
@@ -113,7 +113,7 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    rien ne le signale. Puis :
    ```bash
    ros2 run camera_calibration cameracalibrator --size 8x6 --square 0.025 \
-       --no-service-check image:=/camera/image
+       --no-service-check image:=/camera/image_raw
    ```
    Le YAML produit remplace `alidade_description/config/camera_v1.yaml`
    (provisoire : focale nominale, sans distorsion) ; reporter ensuite
@@ -143,9 +143,8 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
 
    **Vérifier que le support de caméra est conforme à la CAO.** L'URDF le
    suppose incliné de 25° pile et sans dévers, et un écart ne se voit pas à
-   l'image : il se traduit
-   par une erreur de hauteur sur tout ce qu'on détecte. Poser le cube au sol
-   à ~50 cm, puis :
+   l'image : il se traduit par une erreur de hauteur sur tout ce qu'on
+   détecte. Poser le cube au sol à ~30 cm, au milieu du champ, puis :
    ```bash
    ros2 run tf2_ros tf2_echo base_footprint marker_<id>
    ```
@@ -433,17 +432,22 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   de métadonnées UVC (`index` 1) qui n'est pas une caméra. La règle udev ne
   lie `/dev/camera` qu'au premier. Mise au point **fixe** obligatoire : en
   autofocus la C920 change ses intrinsèques en permanence.
-- **`image_transport` applique les remappages DEUX FOIS** : il résout le nom
-  de base lui-même, puis `create_publisher` le résout encore. Une règle dont
-  la cible est la source d'une autre se mord la queue. Vécu du temps où la
-  caméra était montée tête en bas : avec `rotated/image → image` et
+- **Ne pas remapper un nœud `image_transport`** : il applique les règles de
+  façon incohérente. Au topic de base, DEUX FOIS : il résout le nom
+  lui-même, puis `create_publisher` le résout encore, si bien qu'une règle
+  dont la cible est la source d'une autre se mord la queue. Vécu du temps où
+  la caméra était montée tête en bas : avec `rotated/image → image` et
   `image → raw/image`, le nœud de retournement republiait sa sortie sur sa
-  propre entrée ; `/camera/image` restait vide, la boucle coûtait un
-  demi-cœur et sa gigue faisait passer la périodicité du `controller_manager`
-  de 2 à 13 Hz d'écart-type. D'où, dans `camera.launch.py`, une seule règle
-  (`image_raw → image`), qui ne peut se composer avec aucune autre.
+  propre entrée ; l'image restait vide, la boucle coûtait un demi-cœur et sa
+  gigue faisait passer la périodicité du `controller_manager` de 2 à 13 Hz
+  d'écart-type. Aux topics de ses plugins, JAMAIS : avec `image_raw → image`,
+  l'image partait bien sur `/camera/image` mais le JPEG restait sur
+  `/camera/image_raw/compressed`, et l'interface, abonnée à
+  `/camera/image/compressed`, n'affichait plus rien. D'où `camera.launch.py`
+  sans aucun remappage : les noms par défaut du pilote sous `/camera` sont
+  les bons.
 - En `mjpeg2rgb`, usb_cam décode le MJPEG de la C920 et `image_transport`
-  réencode un JPEG pour `/camera/image/compressed` : le flux compressé coûte
+  réencode un JPEG pour `/camera/image_raw/compressed` : le flux compressé coûte
   du CPU, mais seulement quand quelqu'un le regarde. Le mode `mjpeg`
   republierait le flux de la caméra sans réencodage, mais sans image brute
   pour le détecteur.

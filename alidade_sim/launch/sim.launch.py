@@ -65,7 +65,7 @@ def setup(context):
             '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
             '/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
             # Camera simulee : memes topics que le pilote du robot reel.
-            '/camera/image@sensor_msgs/msg/Image[gz.msgs.Image',
+            '/camera/image_raw@sensor_msgs/msg/Image[gz.msgs.Image',
             '/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
         ],
         parameters=[{'use_sim_time': use_sim_time}],

@@ -4,7 +4,7 @@
 #
 # La camera est montee a l'endroit : l'image du pilote est deja droite, dans le
 # repere optique de la CAO. En mjpeg2rgb, usb_cam decode le MJPEG de la camera
-# et image_transport en reencode un JPEG sur image/compressed, pour l'interface.
+# et image_transport en reencode un JPEG sur image_raw/compressed, pour l'interface.
 usb_cam:
   ros__parameters:
     use_sim_time: ${use_sim_time}

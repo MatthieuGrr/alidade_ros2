@@ -1,9 +1,9 @@
 # Intrinseques de la C920 (revision v1), format camera_info_manager, charge par
-# usb_cam via camera_info_url. Decrit l'image DROITE (retournee), en 640x480.
+# usb_cam via camera_info_url. Decrit l'image du pilote, en 640x480.
 #
 # PROVISOIRE : valeurs nominales (focale ~530 px pour ~62 deg d'ouverture, point
 # principal au centre, sans distorsion), en attendant le passage de la mire
-# avec camera_calibration sur /camera/image. Suffisant pour afficher et pour
+# avec camera_calibration sur /camera/image_raw. Suffisant pour afficher et pour
 # tester la chaine, pas pour mesurer une pose de marqueur.
 image_width: 640
 image_height: 480

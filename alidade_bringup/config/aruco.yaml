@@ -18,8 +18,8 @@ aruco_tracker:
     use_sim_time: ${use_sim_time}
 
     # Flux du pilote. image_transport en deduit le camera_info en remplacant le
-    # dernier element du chemin : /camera/image -> /camera/camera_info.
-    cam_base_topic: /camera/image
+    # dernier element du chemin : /camera/image_raw -> /camera/camera_info.
+    cam_base_topic: /camera/image_raw
     image_sub_compressed: false
     image_sub_qos:
       reliability: 1      # 1 = reliable ; voir l'avertissement plus haut

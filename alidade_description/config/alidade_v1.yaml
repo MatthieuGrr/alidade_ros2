@@ -189,7 +189,7 @@ camera:
   height: 480
   fps: 15.0                    # flottant : usb_cam declare framerate en double
   pixel_format: mjpeg2rgb      # MJPEG natif de la C920, décodé sur le Pi ; image_transport
-                               # en réencode un JPEG sur /camera/image/compressed
+                               # en réencode un JPEG sur /camera/image_raw/compressed
   # Mise au point FIXE : en autofocus la C920 change ses intrinsèques en
   # permanence et la calibration ne vaudrait rien. focus est le focus_absolute
   # V4L2 (0..250 par pas de 5) ; 50 vise 0.3-1 m, à régler à la calibration.

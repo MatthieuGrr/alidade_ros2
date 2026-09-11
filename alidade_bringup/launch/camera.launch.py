@@ -1,9 +1,9 @@
 """Camera C920 : acquisition et detection ArUco dans un conteneur.
 
-Topics, sous /camera :
-    image, camera_info              image droite, repere camera.frame : c'est
-                                    le flux a consommer (interface, detecteurs)
-    image/compressed                JPEG reencode par image_transport, pour l'interface
+Topics, sous /camera, aux noms par defaut du pilote :
+    image_raw, camera_info          image droite, repere camera.frame (non
+                                    rectifiee, d'ou raw) : le flux a consommer
+    image_raw/compressed            JPEG reencode par image_transport, pour l'interface
 et, avec aruco:=true :
     /aruco_detections               identifiants et poses des marqueurs vus
     /aruco_tracker/debug            image annotee, publiee seulement si on la regarde
@@ -54,10 +54,9 @@ def setup(context):
             extra_arguments=[{'use_intra_process_comms': True}],
         ))
 
-    # Une seule regle de remappage, et qui ne se compose avec aucune autre :
-    # image_transport resout le nom de base AVANT de creer ses publications, si
-    # bien qu'une regle s'y applique DEUX fois (voir README). Le camera_info
-    # est deduit par image_transport a cote de l'image : /camera/camera_info.
+    # AUCUN remappage : image_transport les applique de facon incoherente
+    # (deux fois au nom de base, jamais aux topics de ses plugins), voir README.
+    # Les noms par defaut, sous /camera, sont deja ceux qu'on veut.
     return [ComposableNodeContainer(
         name='camera_container', namespace='camera',
         package='rclcpp_components', executable='component_container_mt',
@@ -67,7 +66,6 @@ def setup(context):
                 package='usb_cam', plugin='usb_cam::UsbCamNode', name='usb_cam',
                 namespace='camera',
                 parameters=[cfg['usb_cam']['ros__parameters']],
-                remappings=[('image_raw', 'image')],
                 extra_arguments=[{'use_intra_process_comms': True}],
             ),
             *nodes,

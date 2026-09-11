@@ -6,7 +6,7 @@
     aruco_bench.py sweep                    # portee et justesse sur images parfaites
     aruco_bench.py cube 0.40 35 20          # rend le cube et verifie sa geometrie
 
-'synth' publie /camera/image et /camera/camera_info comme le ferait la camera,
+'synth' publie /camera/image_raw et /camera/camera_info comme le ferait la camera,
 ce qui permet de valider toute la chaine sans materiel : dictionnaire, taille
 de marqueur, cablage des topics. Le lancer dans un terminal, 'watch' dans un
 autre. 'sweep' se passe de ROS et mesure directement dans OpenCV la portee et
@@ -234,7 +234,7 @@ def cmd_synth(args):
 
     rclpy.init()
     node = Node('aruco_bench_synth')
-    pub_img = node.create_publisher(Image, '/camera/image', 5)
+    pub_img = node.create_publisher(Image, '/camera/image_raw', 5)
     pub_info = node.create_publisher(CameraInfo, '/camera/camera_info', 5)
 
     info = CameraInfo(width=W, height=H, distortion_model='plumb_bob')
