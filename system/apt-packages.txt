@@ -5,9 +5,8 @@ ros-jazzy-robot-state-publisher
 ros-jazzy-ros2-control
 ros-jazzy-ros2-controllers
 ros-jazzy-rplidar-ros
-# Camera C920 : pilote, remise a l'endroit (ImageFlipNode), transport compresse, mire
+# Camera C920 : pilote, transport compresse, mire
 ros-jazzy-usb-cam
-ros-jazzy-image-rotate
 ros-jazzy-image-transport-plugins
 ros-jazzy-camera-calibration
 v4l-utils

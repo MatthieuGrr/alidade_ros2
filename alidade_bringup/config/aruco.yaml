@@ -17,9 +17,8 @@ aruco_tracker:
   ros__parameters:
     use_sim_time: ${use_sim_time}
 
-    # Flux redresse. image_transport en deduit le camera_info en remplacant le
+    # Flux du pilote. image_transport en deduit le camera_info en remplacant le
     # dernier element du chemin : /camera/image -> /camera/camera_info.
-    # S'y abonner reveille le noeud de retournement, qui est paresseux.
     cam_base_topic: /camera/image
     image_sub_compressed: false
     image_sub_qos:
@@ -40,7 +39,7 @@ aruco_tracker:
     marker_dict: 4X4_50
     marker_size: 0.040
 
-    # Poses laissees dans le repere de l'image (camera_upright_optical_frame).
+    # Poses laissees dans le repere de l'image (camera_optical_frame).
     # Pas de transformation vers base_footprint tant que la calibration n'est
     # pas faite : une etape de plus melangerait l'erreur d'intrinseques a
     # l'erreur de montage, et on ne saurait plus laquelle on mesure.

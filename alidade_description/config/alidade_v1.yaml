@@ -172,24 +172,24 @@ lidar:
   noise_stddev: 0.015        # ≈ 2 sigma pour ±30 mm
   serial_baudrate: 460800    # propre au C1
 
-# Logitech C920 HD Pro (046d:082d), sur USB, montée TÊTE EN BAS. La CAO place
-# le repère optique comme pour une caméra droite ; mount_rpy le retourne d'un
-# demi-tour autour de l'axe optique (z) pour qu'il décrive le capteur tel
-# qu'il est. L'image brute est donc publiée à l'envers mais géométriquement
-# juste dans ce repère. Un nœud de retournement (image_rotate/ImageFlipNode,
-# rotation_steps: 2) produit l'image droite dans upright_frame, enfant du
-# repère optique par la même rotation : c'est ce flux que l'interface et les
-# détecteurs consomment, et c'est sur lui que se fait la calibration.
+# Logitech C920 HD Pro (046d:082d), sur USB, montée à l'endroit sur un support
+# incliné de 25° vers le sol. Le repère optique de la CAO décrit donc le
+# capteur tel quel : pas de mount_rpy, et l'image du pilote se consomme
+# directement.
+#
+# Champ utile : avec la focale mesurée (fy ≈ 690 px, demi-ouverture verticale
+# ≈ 19°) et l'axe optique à 103 mm du sol, un cube de 50 mm posé au sol reste
+# entier dans l'image de 11 à 55 cm devant le châssis. C'est voulu : la caméra
+# ne sert qu'à l'approche finale, la recherche lointaine est l'affaire du
+# LiDAR et de la carte.
 camera:
   frame: camera_optical_frame
-  mount_rpy: [0.0, 0.0, 3.141592653589793]
-  upright_frame: camera_upright_optical_frame
   device: /dev/camera          # règle udev, index 0 de la C920 (l'index 1 est la métadonnée)
   width: 640                   # suffisant pour un marqueur de 10 cm à moins d'un mètre
   height: 480
   fps: 15.0                    # flottant : usb_cam declare framerate en double
-  pixel_format: mjpeg2rgb      # MJPEG natif de la C920, décodé sur le Pi ; le flux compressé
-                               # est republié tel quel sur image_raw/compressed
+  pixel_format: mjpeg2rgb      # MJPEG natif de la C920, décodé sur le Pi ; image_transport
+                               # en réencode un JPEG sur /camera/image/compressed
   # Mise au point FIXE : en autofocus la C920 change ses intrinsèques en
   # permanence et la calibration ne vaudrait rien. focus est le focus_absolute
   # V4L2 (0..250 par pas de 5) ; 50 vise 0.3-1 m, à régler à la calibration.

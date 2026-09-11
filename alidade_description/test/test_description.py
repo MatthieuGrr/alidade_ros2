@@ -60,17 +60,40 @@ def test_frames_and_root():
     assert not (links & joints), 'Gazebo refuse les noms partages link/joint'
 
 
-def test_camera_frames():
-    """L'image droite a son repere, enfant du repere optique physique par un
-    demi-tour autour de l'axe optique : la meme transformation que celle que
-    diffuse ImageFlipNode."""
-    cam = REVISION['camera']
-    robot = run_xacro(target='real')
+def rotation(rpy):
+    """Matrice d'une origine URDF : rotations fixes x, puis y, puis z."""
+    (cr, cp, cy), (sr, sp, sy) = [[f(a) for a in rpy] for f in (math.cos, math.sin)]
+    return [[cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+            [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+            [-sp, cp * sr, cp * cr]]
+
+
+def orientation(robot, frame):
+    """Orientation de frame dans base_footprint, en remontant les joints."""
     parents = {j.find('child').get('link'): j for j in robot.findall('joint')}
-    joint = parents[cam['upright_frame']]
-    assert joint.find('parent').get('link') == cam['frame']
-    rpy = [float(v) for v in joint.find('origin').get('rpy').split()]
-    assert abs(rpy[2] - math.pi) < 1e-6 and abs(rpy[0]) < 1e-6 and abs(rpy[1]) < 1e-6
+    rot = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    while frame in parents:
+        joint = parents[frame]
+        origin = joint.find('origin')
+        rpy = [float(v) for v in origin.get('rpy', '0 0 0').split()]
+        joint_rot = rotation(rpy)
+        rot = [[sum(joint_rot[i][k] * rot[k][j] for k in range(3)) for j in range(3)]
+               for i in range(3)]
+        frame = joint.find('parent').get('link')
+    assert frame == 'base_footprint'
+    return rot
+
+
+def test_camera_image_upright_and_looking_ahead():
+    """L'image du pilote est consommee telle quelle : son repere optique doit
+    decrire une camera droite. On le verifie sur les axes plutot que sur les
+    angles, pour qu'un export retourne ou un mount_rpy oublie se voie."""
+    rot = orientation(run_xacro(target='real'), REVISION['camera']['frame'])
+    axis = lambda i: [rot[r][i] for r in range(3)]
+    x, y, z = axis(0), axis(1), axis(2)
+    assert x[1] < -0.99, f'la droite de l image doit etre la droite du robot : x = {x}'
+    assert y[2] < -0.5, f'le bas de l image doit pointer vers le sol : y = {y}'
+    assert z[0] > 0.5 and z[2] < 0.0, f'l axe optique doit viser devant, vers le sol : z = {z}'
 
 
 def test_check_urdf():

@@ -1,16 +1,15 @@
-"""Camera C920 : acquisition, redressement et detection ArUco dans un conteneur.
+"""Camera C920 : acquisition et detection ArUco dans un conteneur.
 
 Topics, sous /camera :
-    raw/image, raw/camera_info      image brute, a l'envers, repere optique physique
-    raw/image/compressed            le MJPEG de la camera tel quel (pas de reencodage)
-    image, camera_info              image droite, repere camera.upright_frame :
-                                    c'est le flux a consommer (interface, detecteurs)
+    image, camera_info              image droite, repere camera.frame : c'est
+                                    le flux a consommer (interface, detecteurs)
+    image/compressed                JPEG reencode par image_transport, pour l'interface
 et, avec aruco:=true :
     /aruco_detections               identifiants et poses des marqueurs vus
     /aruco_tracker/debug            image annotee, publiee seulement si on la regarde
     TF marker_<id>                  un repere par marqueur, sous celui de l'image
 
-Les trois noeuds sont composes ensemble pour que les images circulent en
+Les noeuds sont composes ensemble pour que les images circulent en
 intra-processus : une image 640x480 en rgb8 pese 900 ko, soit 13.8 Mo/s a
 15 Hz qu'il serait absurde de serialiser entre deux processus de la meme
 machine. Le conteneur est multi-thread, sinon la detection, plus lourde que
@@ -55,32 +54,20 @@ def setup(context):
             extra_arguments=[{'use_intra_process_comms': True}],
         ))
 
-    # Les deux noeuds vivent dans /camera/raw, ou les noms par defaut tombent
-    # deja juste : une seule regle de remappage chacun, et surtout aucune dont
-    # la cible soit la source d'une autre. image_transport resout le nom de
-    # base AVANT de creer ses publications, si bien qu'une regle s'applique
-    # DEUX fois : avec des regles qui se repondaient, le noeud de retournement
-    # republiait sa sortie sur sa propre entree (boucle, et /camera/image vide).
+    # Une seule regle de remappage, et qui ne se compose avec aucune autre :
+    # image_transport resout le nom de base AVANT de creer ses publications, si
+    # bien qu'une regle s'y applique DEUX fois (voir README). Le camera_info
+    # est deduit par image_transport a cote de l'image : /camera/camera_info.
     return [ComposableNodeContainer(
         name='camera_container', namespace='camera',
         package='rclcpp_components', executable='component_container_mt',
         output='screen',
         composable_node_descriptions=[
-            # Aucun remappage : ses noms par defaut donnent deja
-            # /camera/raw/image_raw (+ /compressed) et /camera/raw/camera_info.
             ComposableNode(
                 package='usb_cam', plugin='usb_cam::UsbCamNode', name='usb_cam',
-                namespace='camera/raw',
+                namespace='camera',
                 parameters=[cfg['usb_cam']['ros__parameters']],
-                extra_arguments=[{'use_intra_process_comms': True}],
-            ),
-            # Lit ces memes topics, et sort sur /camera/image (+ /compressed)
-            # et /camera/camera_info, ce dernier deduit par image_transport.
-            ComposableNode(
-                package='image_rotate', plugin='image_rotate::ImageFlipNode', name='image_flip',
-                namespace='camera/raw',
-                parameters=[cfg['image_flip']['ros__parameters']],
-                remappings=[('image', 'image_raw'), ('rotated/image', '/camera/image')],
+                remappings=[('image_raw', 'image')],
                 extra_arguments=[{'use_intra_process_comms': True}],
             ),
             *nodes,

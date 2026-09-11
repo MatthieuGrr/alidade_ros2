@@ -31,8 +31,7 @@ alidade_ros2/
  │  ├ joint_state_broadcaster ──/joint_states            │
  │  └ imu_sensor_broadcaster ──/imu/data_raw             │
  │ nav2 (6 nœuds) ──Twist──▶ cmd_vel_stamper ──TwistStamped──▶ diff_drive_controller
- │ usb_cam ──/camera/raw/image──▶ ImageFlipNode ──/camera/image (droite) + camera_info
- │                                              └──▶ aruco_tracker ──/aruco_detections + TF
+ │ usb_cam ──/camera/image + camera_info──▶ aruco_tracker ──/aruco_detections + TF
  │ system_monitor (Pi, cadences) ─┐
  │ PicoSystem, nav2 ──/diagnostics─┴─▶ diagnostic_aggregator ──/diagnostics_agg
  └──────────────────────────────────────────────────────┘
@@ -88,7 +87,7 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    ros2 topic hz /joint_states          # 50 Hz
    ros2 topic hz /scan                  # ~10 Hz, frame_id laser
    ros2 topic echo /imu/data_raw --once # ≈ 9.81 m/s² sur z à l'arrêt
-   ros2 topic hz /camera/image          # 15 Hz, frame_id camera_upright_optical_frame
+   ros2 topic hz /camera/camera_info    # 15 Hz, frame_id camera_optical_frame
    ros2 run tf2_ros tf2_echo base_footprint wheel_left_link
    ```
    L'état d'ensemble est dans `/diagnostics_agg`, regroupé par sous-système
@@ -97,14 +96,12 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    seuils (température, rail 5 V, WiFi, cadences) sont dans la section
    `telemetry` de la révision.
 
-   La caméra est montée tête en bas : `/camera/raw/image` est à l'envers
-   (repère optique physique), `/camera/image` est remise à l'endroit par
-   `ImageFlipNode` et c'est elle qu'on consomme. Sans `/dev/camera`, le
-   launch le dit et continue sans caméra.
+   La caméra est montée à l'endroit, inclinée de 25° vers le sol :
+   `/camera/image` sort du pilote dans le repère optique de la CAO et se
+   consomme telle quelle. Sans `/dev/camera`, le launch le dit et continue
+   sans caméra.
 
-   **Calibration de la caméra**, une fois, sur le flux droit (le nœud de
-   retournement recopie le `camera_info` sans corriger le point principal,
-   donc on calibre ce qu'on consomme), mise au point fixe comme en marche.
+   **Calibration de la caméra**, une fois, mise au point fixe comme en marche.
    La mire se génère aux cotes exactes — damier plutôt que ChArUco, dont les
    marqueurs 4x4 seraient confondus avec les faces du cube :
    ```bash
@@ -139,12 +136,14 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    `marker_<id>` portent un biais d'échelle. Portée mesurée sur images
    parfaites : 0,15 à 1,5 m, la limite basse venant du champ de vision et la
    haute d'un côté apparent tombé à 14 px. Sur un cube posé au sol, la
-   caméra étant fixe et horizontale à 11,5 cm, le cube sort du champ par le
-   bas quand l'avant du robot est à moins de ~23 cm : l'approche finale se
-   fera à l'odométrie.
+   caméra étant fixe, inclinée de 25° et son axe optique à 10,3 cm du sol, le
+   cube reste entier dans l'image de **11 à 55 cm** devant le châssis (focale
+   mesurée, fy ≈ 690 px). Au-delà, il faut le chercher au LiDAR ou sur la
+   carte ; en deçà, l'approche finale se fait à l'odométrie.
 
-   **Vérifier que le support de caméra est d'aplomb.** L'URDF le suppose
-   horizontal, et une inclinaison ne se voit pas à l'image : elle se traduit
+   **Vérifier que le support de caméra est conforme à la CAO.** L'URDF le
+   suppose incliné de 25° pile et sans dévers, et un écart ne se voit pas à
+   l'image : il se traduit
    par une erreur de hauteur sur tout ce qu'on détecte. Poser le cube au sol
    à ~50 cm, puis :
    ```bash
@@ -434,30 +433,26 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   de métadonnées UVC (`index` 1) qui n'est pas une caméra. La règle udev ne
   lie `/dev/camera` qu'au premier. Mise au point **fixe** obligatoire : en
   autofocus la C920 change ses intrinsèques en permanence.
-- `ImageFlipNode` (`rotation_steps: 2`) diffuse lui-même un TF du repère
-  d'entrée vers `output_frame_id`, et ne corrige pas `cx`/`cy`. D'où le
-  montage : le repère CAO `camera_optical_frame` est retourné par `mount_rpy`
-  pour décrire l'image brute, `camera_upright_optical_frame` est déclaré dans
-  l'URDF avec la même rotation (le TF du nœud et celui de l'URDF concordent,
-  pas de double parent), et la calibration se fait sur `/camera/image`.
 - **`image_transport` applique les remappages DEUX FOIS** : il résout le nom
   de base lui-même, puis `create_publisher` le résout encore. Une règle dont
-  la cible est la source d'une autre se mord la queue — avec
-  `rotated/image → image` et `image → raw/image`, le nœud de retournement
-  republiait sa sortie sur sa propre entrée : `/camera/image` restait vide, la
-  boucle coûtait un demi-cœur et sa gigue faisait passer la périodicité du
-  `controller_manager` de 2 à 13 Hz d'écart-type. D'où `camera.launch.py` :
-  les deux nœuds vivent dans `/camera/raw`, où les noms par défaut tombent
-  juste, et une seule règle chacun.
-- Les nœuds `image_transport` sont **paresseux** : sans abonné sur leurs
-  images, ils n'émettent plus rien, pas même leur `camera_info`. `/camera/image`
-  muet est donc normal quand personne ne regarde. La supervision surveille
-  `/camera/raw/camera_info` (le pilote, lui, publie en continu) pour ne pas
-  forcer l'encodage JPEG en permanence.
+  la cible est la source d'une autre se mord la queue. Vécu du temps où la
+  caméra était montée tête en bas : avec `rotated/image → image` et
+  `image → raw/image`, le nœud de retournement republiait sa sortie sur sa
+  propre entrée ; `/camera/image` restait vide, la boucle coûtait un
+  demi-cœur et sa gigue faisait passer la périodicité du `controller_manager`
+  de 2 à 13 Hz d'écart-type. D'où, dans `camera.launch.py`, une seule règle
+  (`image_raw → image`), qui ne peut se composer avec aucune autre.
+- En `mjpeg2rgb`, usb_cam décode le MJPEG de la C920 et `image_transport`
+  réencode un JPEG pour `/camera/image/compressed` : le flux compressé coûte
+  du CPU, mais seulement quand quelqu'un le regarde. Le mode `mjpeg`
+  republierait le flux de la caméra sans réencodage, mais sans image brute
+  pour le détecteur.
 - Ne jamais compter des messages en s'abonnant à un flux lourd : une image
   640×480 en `rgb8` fait 900 ko, que CycloneDDS fragmente en centaines de
   datagrammes. En `best_effort`, un fragment perdu jette le message entier, et
-  le compteur ne voyait **rien** passer alors que le flux tournait.
+  le compteur ne voyait **rien** passer alors que le flux tournait. La
+  supervision surveille donc `/camera/camera_info`, quelques centaines
+  d'octets publiés en continu par le pilote.
 - La pose d'un marqueur plan **seul** est ambiguë : deux solutions PnP
   presque équivalentes, entre lesquelles le détecteur bascule d'une image à
   l'autre. Mesuré sur le cube immobile à 43 cm : distance stable à ±1,3 mm,

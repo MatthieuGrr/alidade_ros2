@@ -68,21 +68,21 @@
       </sensor>
     </gazebo>
 
-    <!-- Camera simulee, droite par construction : elle publie directement dans
-         le repere de l'image remise a l'endroit, sur les topics que le noeud de
-         retournement produit sur le robot reel. Le capteur Gazebo regarde le
-         long de +x de sa pose ; on le place a l'origine du repere optique,
-         qui regarde le long de +x de camera_link. -->
+    <!-- Camera simulee, accrochee au repere optique lui-meme : sa position et
+         son inclinaison viennent de l'export, rien n'est recopie ici. Le
+         capteur Gazebo regarde le long de +x avec +z en haut, le repere optique
+         le long de +z avec +y en bas ; la pose ci-dessous passe de l'un a
+         l'autre. C'est une convention, constante quel que soit le montage. -->
     <xacro:property name="camera" value="${hw['camera']}"/>
-    <gazebo reference="camera_link">
+    <gazebo reference="${camera['frame']}">
       <sensor name="camera" type="camera">
         <!-- gz publie l'image sur ce topic et le camera_info a cote de lui. -->
         <topic>camera/image</topic>
         <update_rate>${camera['fps']}</update_rate>
         <always_on>1</always_on>
         <visualize>false</visualize>
-        <gz_frame_id>${camera['upright_frame']}</gz_frame_id>
-        <pose>0.0375 0 -0.0295 0 0 0</pose>
+        <gz_frame_id>${camera['frame']}</gz_frame_id>
+        <pose>0 0 0 ${pi/2} ${-pi/2} 0</pose>
         <camera>
           <horizontal_fov>${camera['sim_horizontal_fov']}</horizontal_fov>
           <image>

@@ -249,7 +249,7 @@ def cmd_synth(args):
     while rclpy.ok() and time.monotonic() - start < args.duration:
         stamp = node.get_clock().now().to_msg()
         img.header.stamp = info.header.stamp = stamp
-        img.header.frame_id = info.header.frame_id = 'camera_upright_optical_frame'
+        img.header.frame_id = info.header.frame_id = 'camera_optical_frame'
         pub_img.publish(img)
         pub_info.publish(info)
         time.sleep(1 / 15.0)

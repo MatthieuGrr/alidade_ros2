@@ -1,11 +1,10 @@
-# Camera C920 : pilote usb_cam puis remise a l'endroit par ImageFlipNode.
-# Gabarit rendu au lancement ; les deux blocs sont passes explicitement a
-# chaque composant par camera.launch.py, le nom de noeud n'a pas a coincider.
+# Camera C920 : pilote usb_cam. Gabarit rendu au lancement ; le bloc est passe
+# explicitement au composant par camera.launch.py, le nom de noeud n'a pas a
+# coincider.
 #
-# usb_cam publie l'image brute (a l'envers, repere optique physique) et, sans
-# reencodage, le MJPEG de la camera sur image_raw/compressed. ImageFlipNode
-# tourne l'image de 180 degres et recopie le camera_info tel quel : c'est
-# pourquoi la calibration se fait sur le flux retourne.
+# La camera est montee a l'endroit : l'image du pilote est deja droite, dans le
+# repere optique de la CAO. En mjpeg2rgb, usb_cam decode le MJPEG de la camera
+# et image_transport en reencode un JPEG sur image/compressed, pour l'interface.
 usb_cam:
   ros__parameters:
     use_sim_time: ${use_sim_time}
@@ -23,11 +22,3 @@ usb_cam:
     focus: ${camera.focus}
     autoexposure: true
     auto_white_balance: true
-
-image_flip:
-  ros__parameters:
-    use_sim_time: ${use_sim_time}
-    rotation_steps: 2
-    use_camera_info: true
-    output_frame_id: ${camera.upright_frame}
-    image_transport: raw

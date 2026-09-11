@@ -35,20 +35,6 @@
   <!-- Geometrie, masses et collisions : export Onshape corrige. -->
   <xacro:include filename="$(find alidade_description)/urdf/generated/alidade_${revision}.urdf"/>
 
-  <!-- Repere de l'image droite : la camera est montee tete en bas, son repere
-       optique (retourne par fix_urdf) decrit l'image brute ; l'image remise a
-       l'endroit par ImageFlipNode vit dans ce repere, tourne d'un demi-tour
-       autour de l'axe optique. Le noeud diffuse la meme transformation : les
-       deux sources concordent, et la simulation, qui n'a pas de noeud de
-       retournement, publie directement ici. -->
-  <xacro:property name="cam" value="${hw['camera']}"/>
-  <link name="${cam['upright_frame']}"/>
-  <joint name="${cam['upright_frame']}_joint" type="fixed">
-    <origin xyz="0 0 0" rpy="0 0 ${pi}"/>
-    <parent link="${cam['frame']}"/>
-    <child link="${cam['upright_frame']}"/>
-  </joint>
-
   <xacro:include filename="$(find alidade_description)/urdf/ros2_control.xacro"/>
   <xacro:alidade_ros2_control hw="${hw}" target="${target}" use_mock="${use_mock}" pico_port="$(arg pico_port)"/>
 
