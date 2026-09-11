@@ -154,6 +154,14 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    amplitude de 20° à 3°. Un millimètre d'erreur à 43 cm vaut 0,13° de
    dévers, la mesure est donc bien plus sensible que l'œil.
 
+   Ce contrôle suppose la caméra **calibrée**. Caméra inclinée, une erreur
+   de focale fausse la profondeur le long de l'axe optique, et l'erreur se
+   reporte sur z. Mesuré sur le support à 25°, cube vers 50 cm, en haut de
+   l'image : 72 mm avec la focale nominale de `camera_v1.yaml` (530 px),
+   36 mm en recalculant avec la focale mesurée (≈ 690 px). L'écart restant,
+   environ 1,5°, est de l'ordre de ce que valent un point principal et une
+   distorsion non calibrés au bord de l'image.
+
    La géométrie du cube est dans `alidade_bringup/config/cube.yaml`, décrite
    face par face (normale sortante et direction du haut du motif) plutôt que
    par des matrices, pour se relire sur le cube posé devant soi ;
