@@ -195,6 +195,8 @@ camera:
   # V4L2 (0..250 par pas de 5) ; 50 vise 0.3-1 m, à régler à la calibration.
   autofocus: false
   focus: 50
+  brightness: 128              # défaut de la C920 ; celui d'usb_cam (50) assombrit l'image
+  power_line_hz: 50            # secteur français : l'anti-scintillement d'usine est à 60 Hz
   # Calibration (fichier camera_info_manager) : provisoire tant que la mire n'est
   # pas passée, voir README.
   calibration: camera_v1.yaml

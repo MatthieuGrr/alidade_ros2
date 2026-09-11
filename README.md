@@ -440,6 +440,18 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   de métadonnées UVC (`index` 1) qui n'est pas une caméra. La règle udev ne
   lie `/dev/camera` qu'au premier. Mise au point **fixe** obligatoire : en
   autofocus la C920 change ses intrinsèques en permanence.
+- **usb_cam 0.8 règle la caméra sous des noms de commandes V4L2 périmés**
+  (`focus_auto`, `exposure_auto`, `white_balance_temperature_auto`), que les
+  noyaux 6.x ont renommés (`focus_automatic_continuous`, `auto_exposure`,
+  `white_balance_automatic`). Le journal dit « unknown control 'focus_auto' »
+  puis « Permission denied » sur `focus_absolute`, et la caméra reste en
+  **autofocus** : c'était le cas jusqu'au 11 sept. 2026, `autofocus: false`
+  n'avait jamais été appliqué. `camera.launch.py` pose donc lui-même
+  l'autofocus, la mise au point et l'anti-scintillement (50 Hz en France,
+  60 Hz d'usine) avant de démarrer le pilote. Les deux autres messages
+  « unknown control » restent, sans effet : exposition et balance des blancs
+  sont voulues automatiques, et c'est leur réglage d'usine. Vérifier avec
+  `v4l2-ctl -d /dev/camera --get-ctrl=focus_automatic_continuous,focus_absolute`.
 - **Ne pas remapper un nœud `image_transport`** : il applique les règles de
   façon incohérente. Au topic de base, DEUX FOIS : il résout le nom
   lui-même, puis `create_publisher` le résout encore, si bien qu'une règle

@@ -18,7 +18,10 @@ usb_cam:
     image_height: ${camera.height}
     camera_name: alidade_c920
     camera_info_url: package://alidade_description/config/${camera.calibration}
+    # autofocus et focus sont aussi appliques par camera.launch.py, sous les
+    # noms de commandes que le noyau connait (voir la).
     autofocus: ${camera.autofocus}
     focus: ${camera.focus}
+    brightness: ${camera.brightness}
     autoexposure: true
     auto_white_balance: true

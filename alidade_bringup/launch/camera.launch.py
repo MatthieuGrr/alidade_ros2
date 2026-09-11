@@ -19,6 +19,7 @@ Sans /dev/camera (regle udev), le launch ne demarre rien et le dit : la camera
 n'est pas vitale, on ne veut ni respawn en boucle ni service en echec.
 """
 import os
+import subprocess
 
 import yaml
 from launch import LaunchDescription
@@ -29,6 +30,30 @@ from launch_ros.descriptions import ComposableNode
 from alidade_bringup import params
 
 
+def v4l2_controls(cam):
+    """Applique les commandes V4L2 qu'usb_cam 0.8 rate.
+
+    Le pilote les regle sous leurs anciens noms (focus_auto, exposure_auto,
+    white_balance_temperature_auto) que les noyaux 6.x ne connaissent plus :
+    « unknown control 'focus_auto' », puis « Permission denied » sur
+    focus_absolute puisque l'autofocus est reste actif. La camera faisait donc
+    sa mise au point en continu, et aucune calibration n'aurait tenu. Deux
+    appels : focus_absolute est refuse tant que l'autofocus tourne. usb_cam
+    reecrit ensuite focus_absolute a la meme valeur, sans dommage.
+    """
+    controls = [('focus_automatic_continuous', int(cam['autofocus'])),
+                ('power_line_frequency', {50: 1, 60: 2}[cam['power_line_hz']])]
+    if not cam['autofocus']:
+        controls.append(('focus_absolute', cam['focus']))
+    errors = []
+    for name, value in controls:
+        out = subprocess.run(['v4l2-ctl', '-d', cam['device'], '-c', f'{name}={value}'],
+                             capture_output=True, text=True)
+        if out.returncode != 0 or out.stderr.strip():
+            errors.append(f'{name}={value} : {out.stderr.strip() or out.returncode}')
+    return errors
+
+
 def setup(context):
     hw = params.load_revision(context.launch_configurations['hardware_revision'])
     use_sim_time = params.as_bool(context.launch_configurations['use_sim_time'])
@@ -37,6 +62,7 @@ def setup(context):
         return [LogInfo(msg=f"camera : {device} absent, pas de camera (regle udev ? cable ?)")]
 
     aruco = params.as_bool(context.launch_configurations['aruco'])
+    notes = [LogInfo(msg=f'camera : commande V4L2 refusee, {e}') for e in v4l2_controls(hw['camera'])]
     with open(params.render_config('camera.yaml', hw, use_sim_time)) as f:
         cfg = yaml.safe_load(f)
 
@@ -57,7 +83,7 @@ def setup(context):
     # AUCUN remappage : image_transport les applique de facon incoherente
     # (deux fois au nom de base, jamais aux topics de ses plugins), voir README.
     # Les noms par defaut, sous /camera, sont deja ceux qu'on veut.
-    return [ComposableNodeContainer(
+    return notes + [ComposableNodeContainer(
         name='camera_container', namespace='camera',
         package='rclcpp_components', executable='component_container_mt',
         output='screen',
