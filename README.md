@@ -96,9 +96,9 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    seuils (température, rail 5 V, WiFi, cadences) sont dans la section
    `telemetry` de la révision.
 
-   La caméra est montée à l'endroit, inclinée de 25° vers le sol :
-   `/camera/image_raw` sort du pilote dans le repère optique de la CAO et
-   se consomme telle quelle. Sans `/dev/camera`, le launch le dit et continue
+   La caméra est montée à l'endroit, inclinée vers le sol (25° en CAO,
+   28,2° mesurés, voir plus bas) : `/camera/image_raw` sort du pilote et se
+   consomme telle quelle. Sans `/dev/camera`, le launch le dit et continue
    sans caméra.
 
    **Mise au point et calibration de la caméra**, à refaire à chaque
@@ -161,10 +161,10 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    `marker_<id>` portent un biais d'échelle. Portée mesurée sur images
    parfaites : 0,15 à 1,5 m, la limite basse venant du champ de vision et la
    haute d'un côté apparent tombé à 14 px. Sur un cube posé au sol, la
-   caméra étant fixe, inclinée de 25° et son axe optique à 10,3 cm du sol, le
-   cube reste entier dans l'image de **11 à ~70 cm** devant le châssis
-   (focale calibrée, fy = 646 px ; la limite lointaine bouge de 15 à 20 cm
-   par degré de montage). Au-delà, il faut le chercher au LiDAR ou sur la
+   caméra étant fixe, inclinée de 28,2° (mesurés) et son axe optique à
+   10,3 cm du sol, le cube reste entier dans l'image de **8 à 42 cm** de la
+   face avant du robot (focale calibrée, fy = 646 px) ; l'approche se
+   travaille à 30 cm. Au-delà, il faut le chercher au LiDAR ou sur la
    carte ; en deçà, l'approche finale se fait à l'odométrie.
 
    **Vérifier que le support de caméra est conforme à la CAO.** L'URDF le
@@ -180,13 +180,15 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    amplitude de 20° à 3°. Un millimètre d'erreur à 43 cm vaut 0,13° de
    dévers, la mesure est donc bien plus sensible que l'œil.
 
-   Ce contrôle suppose la caméra **calibrée**. Caméra inclinée, une erreur
+   Ce contrôle suppose la caméra **calibrée** : caméra inclinée, une erreur
    de focale fausse la profondeur le long de l'axe optique, et l'erreur se
-   reporte sur z. Mesuré sur le support à 25°, cube vers 50 cm, en haut de
-   l'image : 72 mm avec la focale nominale de `camera_v1.yaml` (530 px),
-   36 mm en recalculant avec la focale mesurée (≈ 690 px). L'écart restant,
-   environ 1,5°, est de l'ordre de ce que valent un point principal et une
-   distorsion non calibrés au bord de l'image.
+   reporte sur z (72 mm lus avec la focale nominale). Caméra calibrée, le
+   11 sept. 2026, cube à 30 cm de la face avant : 42,5 mm pour la face
+   tournée vers le robot et 68,9 mm pour le dessus, soit 18 mm de trop sur
+   les deux. Une caméra à 28,2° au lieu des 25° de la CAO explique les deux
+   hauteurs et la distance à la fois ; la correction est dans
+   `camera.mount_rpy` de la révision. Si on ne sait pas d'où vient l'écart,
+   la hauteur mesurée donne directement l'angle à corriger.
 
    La géométrie du cube est dans `alidade_bringup/config/cube.yaml`, décrite
    face par face (normale sortante et direction du haut du motif) plutôt que
