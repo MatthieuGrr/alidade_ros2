@@ -316,6 +316,19 @@ collision, URI `package://`. Il vérifie le centre de masse (y = −0.1 mm) et
 les poses des repères principaux contre la révision, et fait échouer le build
 au-delà d'un millimètre.
 
+**Réexporter depuis Onshape** : l'exportateur vide le dossier `urdf/` qu'on
+lui désigne (les trois xacro écrits à la main disparaissent) et y écrit
+`main_assembly.urdf`. Après chaque export :
+```bash
+cd alidade_description
+git checkout HEAD -- urdf/alidade.urdf.xacro urdf/gazebo.xacro urdf/ros2_control.xacro
+mv urdf/main_assembly.urdf urdf/onshape/alidade.urdf
+touch urdf/onshape/alidade.urdf   # mv garde la date : sans ça le build ne relance pas fix_urdf
+```
+Exporter les maillages en résolution grossière : en fine, le même robot
+pèse 116 Mo de STL (2,3 M triangles) contre 16 Mo, pour rien de visible
+dans rviz.
+
 Le xacro `alidade.urdf.xacro` inclut cet URDF et ajoute ce qui dépend de la
 cible : plugin ros2_control (Pico, mock ou Gazebo), et en simulation le
 LiDAR `gpu_lidar` aux valeurs de la datasheet du C1, l'IMU et les frictions.
