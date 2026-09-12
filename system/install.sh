@@ -45,7 +45,7 @@ ALIDADE_LAUNCH_ARGS="nav:=true"
 DEFAULTS
 fi
 systemctl daemon-reload
-systemctl enable alidade
+systemctl reenable alidade   # reenable : recree aussi les liens .wants des appareils
 
 echo
 echo "fait. Rebrancher les peripheriques (ou redemarrer) puis verifier :"

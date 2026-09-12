@@ -10,7 +10,11 @@
 Description=Alidade - pile ROS 2 (ros2_control, LiDAR, SLAM, navigation)
 After=network-online.target dev-pico.device dev-rplidar.device
 Wants=network-online.target
-# Sans le Pico ou le LiDAR, inutile de demarrer ; s'ils sont debranches, on s'arrete.
+# Sans le Pico ou le LiDAR, inutile de demarrer ; s'ils sont debranches, on
+# s'arrete (les moteurs se coupent, et le Pico les coupe de son cote apres
+# 300 ms sans consigne). Cet arret est PROPRE : Restart=on-failure ne relance
+# donc rien, et c'est WantedBy sur les memes appareils, plus bas, qui fait
+# repartir la pile quand ils reviennent.
 BindsTo=dev-pico.device dev-rplidar.device
 
 [Service]
@@ -38,4 +42,8 @@ Restart=on-failure
 RestartSec=5
 
 [Install]
-WantedBy=multi-user.target
+# Au boot, et aussi des que le Pico ou le LiDAR est (re)branche : sans cette
+# seconde partie, un debranchement du Pico arretait la pile pour de bon.
+# Verifie le 12 sept. 2026 : coupure/remise du Pico, pile muette jusqu'au
+# systemctl restart. `systemctl reenable alidade` apres mise a jour.
+WantedBy=multi-user.target dev-pico.device dev-rplidar.device
