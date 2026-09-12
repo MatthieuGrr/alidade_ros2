@@ -1,0 +1,287 @@
+#!/usr/bin/env python3
+"""Calibration de l'odometrie, le LiDAR contre la scene pour juge.
+
+    odom_calib.py rotate [tours] [w]      # echelle en rotation (tours complets)
+    odom_calib.py straight [metres] [v]   # cap apres une ligne droite (ICP)
+
+A refaire apres tout changement de pneus, de plancher, de firmware moteur ou
+d'IMU. Trois sources sont comparees a chaque essai : l'odometrie ROUES
+(/diff_drive_controller/odom), l'integrale du GYROMETRE et l'odometrie
+FUSIONNEE publiee par gyro_odom.py (/odom).
+
+Ni l'IMU ni slam_toolbox ne servent de reference : c'est le LiDAR contre la
+scene, de deux facons selon le mouvement.
+  rotate   : N tours COMPLETS sur place, profils de scan avant/apres correles
+             circulairement. Les tours partiels seraient biaises, le LiDAR
+             etant excentre de 7 cm.
+  straight : ICP 2D point a point entre les nuages avant/apres, initialise par
+             l'odometrie. La correlation de profils ne vaut que pour une
+             rotation pure, d'ou l'ICP des qu'il y a translation.
+
+Resultats a reporter dans alidade_<revision>.yaml : kinematics pour les roues,
+imu.gyro_scale pour le gyromètre. Mesure du 12 sept. 2026 : roues 0.9975 a
+1.0061, gyromètre 1.029 (d'ou gyro_scale 0.9718), fusion 0.9989.
+
+Degager un metre autour du robot : le moniteur de collision bloque tout
+mouvement sous 22 cm, et les scripts publient sur /cmd_vel_nav, donc a
+travers le lisseur et le moniteur, comme la navigation.
+"""
+import argparse
+import math
+import statistics
+import time
+
+import numpy as np
+import rclpy
+from geometry_msgs.msg import Twist, Vector3
+from nav_msgs.msg import Odometry
+from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
+from sensor_msgs.msg import Imu, LaserScan
+
+BINS = 360
+
+
+def spin(node, dur):
+    end = time.time() + dur
+    while time.time() < end:
+        rclpy.spin_once(node, timeout_sec=0.02)
+
+
+def wrap(a):
+    return math.atan2(math.sin(a), math.cos(a))
+
+
+def yaw_of(q):
+    return math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
+
+
+def integrate(samples, sens=1.0, bias=0.0):
+    """Integrale trapezoidale d'une serie (instant, vitesse angulaire)."""
+    return sum(sens * (w1 + w2 - 2 * bias) / 2 * (t2 - t1)
+               for (t1, w1), (t2, w2) in zip(samples, samples[1:]) if 0 < t2 - t1 < 0.1)
+
+
+class Bench(Node):
+    """Abonnements communs aux deux mesures, et la commande de vitesse."""
+
+    def __init__(self):
+        super().__init__('odom_calib')
+        self.wheel = None       # (x, y, cap) de l'odometrie roues
+        self.fused = None       # cap de /odom
+        self.scans = []
+        self.gyro = []
+        self.create_subscription(Odometry, '/diff_drive_controller/odom', self.on_wheel, 20)
+        self.create_subscription(Odometry, '/odom', self.on_fused, 20)
+        self.create_subscription(Imu, '/imu/data_raw', self.on_imu, qos_profile_sensor_data)
+        self.create_subscription(LaserScan, '/scan', self.scans.append, qos_profile_sensor_data)
+        self.cmd = self.create_publisher(Twist, '/cmd_vel_nav', 10)
+
+    def on_wheel(self, m):
+        p = m.pose.pose
+        self.wheel = (p.position.x, p.position.y, yaw_of(p.orientation))
+
+    def on_fused(self, m):
+        self.fused = yaw_of(m.pose.pose.orientation)
+
+    def on_imu(self, m):
+        t = rclpy.time.Time.from_msg(m.header.stamp).nanoseconds * 1e-9
+        self.gyro.append((t, m.angular_velocity.z))
+
+    def ready(self):
+        while self.wheel is None or self.fused is None or len(self.scans) < 3:
+            rclpy.spin_once(self, timeout_sec=0.1)
+
+    def drive(self, v=0.0, w=0.0):
+        self.cmd.publish(Twist(linear=Vector3(x=v), angular=Vector3(z=w)))
+
+    def stop(self):
+        for _ in range(6):
+            self.drive(); spin(self, 0.05)
+        spin(self, 1.5)
+
+    def fresh_scans(self, seconds=7.0):
+        """Six tours de LiDAR : la mediane par degre lisse le bruit du capteur."""
+        self.scans.clear(); spin(self, seconds)
+        return self.scans[-6:]
+
+
+# --------------------------------------------------------------- rotation
+def profile(scans):
+    """Portee mediane par degre, sur plusieurs tours."""
+    acc = [[] for _ in range(BINS)]
+    for sc in scans:
+        for i, r in enumerate(sc.ranges):
+            if math.isfinite(r) and r > 0.05:
+                b = int(round(math.degrees(sc.angle_min + i * sc.angle_increment))) % BINS
+                acc[b].append(r)
+    return [statistics.median(v) if v else None for v in acc]
+
+
+def circular_shift(a, b):
+    """Decalage circulaire, en degres, qui superpose b sur a."""
+    best, arg = None, 0
+    for k in range(BINS):
+        pairs = [(a[i], b[(i + k) % BINS]) for i in range(BINS)]
+        pairs = [(x, y) for x, y in pairs if x and y and abs(x - y) < 1.5]
+        if len(pairs) < BINS // 4:
+            continue
+        err = sum(abs(x - y) for x, y in pairs) / len(pairs)
+        if best is None or err < best:
+            best, arg = err, k
+    return (arg + 180) % 360 - 180, best
+
+
+def cmd_rotate(bench, args):
+    sens = 1.0 if args.turns >= 0 else -1.0
+    target = abs(args.turns) * 2 * math.pi
+    print('profil de depart...')
+    before = profile(bench.fresh_scans())
+    bench.gyro.clear(); spin(bench, 4.0)
+    bias = statistics.fmean(w for _, w in bench.gyro)
+    print(f"biais du gyromètre a l'arret : {math.degrees(bias):+.4f} deg/s "
+          f"({len(bench.gyro)} echantillons)")
+
+    turned = fused = 0.0
+    prev_w, prev_f = bench.wheel[2], bench.fused
+    bench.gyro.clear()
+    print(f"{abs(args.turns):g} tour(s) a {args.w} rad/s, "
+          f"{'anti-horaire' if sens > 0 else 'horaire'}...")
+    start = time.time()
+    while turned < target and time.time() - start < 180:
+        rclpy.spin_once(bench, timeout_sec=0.02)
+        turned += sens * wrap(bench.wheel[2] - prev_w); prev_w = bench.wheel[2]
+        fused += sens * wrap(bench.fused - prev_f); prev_f = bench.fused
+        left = target - turned
+        bench.drive(w=sens * max(0.45, min(args.w, 1.5 * left)) if left > 0.02 else 0.0)
+    bench.stop()
+    gyro = integrate(bench.gyro, sens, bias)
+    turned += sens * wrap(bench.wheel[2] - prev_w)
+    fused += sens * wrap(bench.fused - prev_f)
+
+    print('profil final...')
+    residual, err = circular_shift(before, profile(bench.fresh_scans()))
+    truth = abs(args.turns) * 360 + sens * (-residual)
+    print()
+    print(f"roues       {math.degrees(turned):9.2f} deg")
+    print(f"gyrometre   {math.degrees(gyro):9.2f} deg")
+    print(f"/odom       {math.degrees(fused):9.2f} deg")
+    print(f"LiDAR       residu {residual:+.1f} deg -> rotation vraie {truth:9.2f} deg "
+          f"(ecart moyen des profils {err:.3f} m)")
+    print(f"rapports    roues/vrai {math.degrees(turned)/truth:.4f}   "
+          f"gyrometre/vrai {math.degrees(gyro)/truth:.4f}   fusion/vrai {math.degrees(fused)/truth:.4f}")
+
+
+# --------------------------------------------------------------- ligne droite
+def cloud(scans, laser_x=0.0456):
+    """Nuage 2D dans le repere du robot (le laser est tourne de 180 deg)."""
+    acc = {}
+    for sc in scans:
+        for i, r in enumerate(sc.ranges):
+            if math.isfinite(r) and 0.1 < r < 8.0:
+                a = round(math.degrees(sc.angle_min + i * sc.angle_increment))
+                acc.setdefault(a, []).append(r)
+    pts = []
+    for a, v in acc.items():
+        r = statistics.median(v)
+        t = math.radians(a + 180)
+        pts.append((laser_x + r * math.cos(t), r * math.sin(t)))
+    return np.array(pts)
+
+
+def icp(src, dst, guess, iters=25, reject=0.25):
+    """Transformation rigide amenant src sur dst, initialisee par `guess`.
+
+    Point a point, plus proche voisin par force brute : 360 points par nuage,
+    quelques millisecondes par iteration, et aucune dependance a installer.
+    """
+    dx, dy, dt = guess
+    kept = 0
+    for _ in range(iters):
+        c, s = math.cos(dt), math.sin(dt)
+        moved = np.column_stack([c * src[:, 0] - s * src[:, 1] + dx,
+                                 s * src[:, 0] + c * src[:, 1] + dy])
+        d = np.linalg.norm(moved[:, None, :] - dst[None, :, :], axis=2)
+        j = d.argmin(axis=1)
+        keep = d[np.arange(len(src)), j] < reject
+        kept = int(keep.sum())
+        if kept < 20:
+            break
+        a, b = moved[keep], dst[j[keep]]
+        ca, cb = a.mean(axis=0), b.mean(axis=0)
+        u, _, vt = np.linalg.svd((a - ca).T @ (b - cb))
+        rot = vt.T @ u.T
+        if np.linalg.det(rot) < 0:
+            vt[1] *= -1
+            rot = vt.T @ u.T
+        step = math.atan2(rot[1, 0], rot[0, 0])
+        t = cb - rot @ ca
+        c2, s2 = math.cos(step), math.sin(step)
+        dx, dy = c2 * dx - s2 * dy + t[0], s2 * dx + c2 * dy + t[1]
+        dt += step
+        if abs(step) < 1e-5 and np.linalg.norm(t) < 1e-4:
+            break
+    return dx, dy, dt, kept
+
+
+def cmd_straight(bench, args):
+    print('nuage de depart...')
+    before = cloud(bench.fresh_scans())
+    w0, f0 = bench.wheel, bench.fused
+    bench.gyro.clear()
+    print(f'ligne droite de {args.metres:g} m a {args.v} m/s, cap libre...')
+    start = time.time()
+    while time.time() - start < 60:
+        rclpy.spin_once(bench, timeout_sec=0.02)
+        done = math.dist(bench.wheel[:2], w0[:2])
+        if done >= args.metres - 0.005:
+            break
+        bench.drive(v=args.v if args.metres - done > 0.15 else max(0.05, args.v / 2))
+    bench.stop()
+    w1, f1 = bench.wheel, bench.fused
+    print('nuage final...')
+    after = cloud(bench.fresh_scans())
+
+    wheel_yaw, fused_yaw = wrap(w1[2] - w0[2]), wrap(f1 - f0)
+    gyro_yaw = integrate(bench.gyro)
+    # Un point du nuage final, vu du robot arrive, revient dans le repere de
+    # depart par la pose finale : c'est donc le deplacement lui-meme qui
+    # aligne `after` sur `before`, et l'odometrie en est la premiere estimation.
+    dx, dy, dt, used = icp(after, before, (w1[0] - w0[0], w1[1] - w0[1], wheel_yaw))
+    print()
+    print(f"roues       {math.dist(w1[:2], w0[:2])*100:6.1f} cm, cap {math.degrees(wheel_yaw):+6.2f} deg")
+    print(f"gyrometre   cap {math.degrees(gyro_yaw):+6.2f} deg")
+    print(f"/odom       cap {math.degrees(fused_yaw):+6.2f} deg")
+    print(f"ICP (juge)  {math.hypot(dx, dy)*100:6.1f} cm, cap {math.degrees(dt):+6.2f} deg "
+          f"({used} appariements)")
+    print(f"erreurs de cap : roues {math.degrees(wrap(wheel_yaw - dt)):+.2f} deg, "
+          f"/odom {math.degrees(wrap(fused_yaw - dt)):+.2f} deg")
+    print(f"erreur de distance : roues {100*(math.dist(w1[:2], w0[:2])/math.hypot(dx, dy) - 1):+.2f} %")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest='command', required=True)
+    r = sub.add_parser('rotate', help='echelle en rotation, tours complets')
+    r.add_argument('turns', nargs='?', type=float, default=2.0, help='negatif = horaire')
+    r.add_argument('w', nargs='?', type=float, default=0.6)
+    r.set_defaults(func=cmd_rotate)
+    s = sub.add_parser('straight', help='cap et distance apres une ligne droite')
+    s.add_argument('metres', nargs='?', type=float, default=1.0)
+    s.add_argument('v', nargs='?', type=float, default=0.15)
+    s.set_defaults(func=cmd_straight)
+    args = ap.parse_args()
+
+    rclpy.init()
+    bench = Bench()
+    bench.ready()
+    try:
+        args.func(bench, args)
+    finally:
+        bench.stop()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()

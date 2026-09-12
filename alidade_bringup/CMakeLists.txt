@@ -18,6 +18,7 @@ install(PROGRAMS
   scripts/cube_detector.py
   scripts/cube_docking.py
   scripts/gyro_odom.py
+  scripts/odom_calib.py
   DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)

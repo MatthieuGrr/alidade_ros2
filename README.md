@@ -27,9 +27,10 @@ alidade_ros2/
  │                          ▲                            │◀──────▶│  « 2D Goal Pose »    │
  │ ros2_control_node        │ /map                       │Cyclone │  ou                  │
  │  ├ PicoSystem ◀──USB──▶ Pico 2 (ticks, IMU brute)     │  DDS   │ Gazebo + même pile   │
- │  ├ diff_drive_controller ─odom→base_footprint─▶ TF    │        └──────────────────────┘
+ │  ├ diff_drive_controller ──/diff_drive_controller/odom (roues)  └───────────────┘
  │  ├ joint_state_broadcaster ──/joint_states            │
- │  └ imu_sensor_broadcaster ──/imu/data_raw             │
+ │  └ imu_sensor_broadcaster ──/imu/data_raw ─┐          │
+ │ gyro_odom (cap du gyro, distance des roues)◀┘──/odom + odom→base_footprint─▶ TF
  │ nav2 (6 nœuds) ──Twist──▶ cmd_vel_stamper ──TwistStamped──▶ diff_drive_controller
  │ usb_cam ──/camera/image_raw + camera_info──▶ aruco_tracker ──/aruco_detections + TF
  │ system_monitor (Pi, cadences) ─┐
@@ -202,9 +203,34 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    ```bash
    ros2 topic pub -r 20 /diff_drive_controller/cmd_vel geometry_msgs/msg/TwistStamped \
        '{twist: {linear: {x: 0.2}}}'
-   ros2 topic echo /diff_drive_controller/odom --field pose.pose.position
+   ros2 topic echo /odom --field pose.pose.position
    ```
    ou au clavier : `ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p stamped:=true -r cmd_vel:=/diff_drive_controller/cmd_vel`.
+
+   **Odométrie : la distance vient des roues, le cap du gyromètre.**
+   `gyro_odom.py` publie `/odom` et le repère `odom → base_footprint` ;
+   `diff_drive_controller` ne publie plus ce repère mais garde son odométrie
+   roues, et comparer les deux montre ce que le gyromètre apporte. Le calcul
+   est dans `alidade_bringup/odometry.py`, testé sans ROS. Sans échantillon
+   frais — ou sur une trame de zéros, que le firmware envoie quand la lecture
+   I²C échoue et qui est impossible sous gravité — le cap revient aux roues,
+   et le nœud le dit dans le journal.
+
+   **Calibrer l'odométrie**, après tout changement de pneus, de plancher, de
+   firmware moteur ou d'IMU. Dégager un mètre autour du robot, puis :
+   ```bash
+   ros2 run alidade_bringup odom_calib.py rotate 2 0.6     # échelle en rotation
+   ros2 run alidade_bringup odom_calib.py rotate -2 0.6    # et dans l'autre sens
+   ros2 run alidade_bringup odom_calib.py straight 1.0     # cap et distance en ligne droite
+   ```
+   Le juge est le LiDAR contre la scène : corrélation circulaire des profils
+   de scan pour les tours complets, ICP 2D pour la translation. Les résultats
+   se reportent dans la révision : `kinematics` pour les roues,
+   `imu.gyro_scale` pour le gyromètre. Mesuré le 12 sept. 2026, trois essais
+   concordants à 0,1 % : roues 0,9975 à 1,0061, gyromètre **1,029** (d'où
+   `gyro_scale: 0.9718`, l'erreur de sensibilité du BNO055, donnée à ±3 %),
+   et **fusion 0,9989** après correction. En ligne droite, cap juste à 0,3°
+   près pour la fusion, 0,4° pour les roues, sur 1 m.
 
 3. **Cartographie seule** : `robot.launch.py slam:=true`, puis rviz sur le
    poste (`./alidade_viz/docker/run.sh rviz slam`).
@@ -531,6 +557,32 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   du CPU, mais seulement quand quelqu'un le regarde. Le mode `mjpeg`
   republierait le flux de la caméra sans réencodage, mais sans image brute
   pour le détecteur.
+- **L'accéléromètre du BNO055 n'est pas calibré et ne sert à rien tel quel.**
+  Le firmware du Pico n'écrit aucun décalage (la calibration en six positions
+  n'a jamais été faite, et l'état `CALIB_STAT` ne sort que sur l'UART du Pico,
+  pas dans la trame). Mesuré, robot posé à plat et Pico redémarré au sol :
+  gravité 9,606 m/s² au lieu de 9,807, roulis apparent 7,5° et tangage 4,2°
+  alors que le niveau donne 1°. Reproductible. Seul le **gyromètre** est
+  exploité, et lui est excellent : biais 0,005 °/s, soit 0,3° de dérive par
+  minute, bruit 0,1 °/s, et zéro trou dans le flux sur trois essais de tours
+  complets depuis le passage de l'I²C à 100 kHz.
+- **Une lecture I²C ratée envoie des zéros**, pas un drapeau : vu du Pi, une
+  IMU en panne ressemble à une IMU immobile. `odometry.usable()` rejette donc
+  les six zéros exacts, `accel z` nul étant impossible sous gravité. Un vrai
+  drapeau de validité dans la trame S reste à faire côté firmware.
+- **Le LiDAR met de 15 s à 7 minutes à démarrer**, en enchaînant les
+  « Cannot start scan: 80008002 » avant de réussir (18 à 38 échecs observés,
+  respawn du pilote). Il répond pourtant (firmware, état de santé) et sa
+  configuration n'a pas changé. Écarté : la caméra n'y est pour rien (même
+  échec avec `camera:=false`). Tant que `/scan` n'arrive pas, `nav.launch`
+  attend, donc ni chaîne de sécurité ni mouvement : c'est voulu, mais il faut
+  le savoir. Piste restante : mécanique ou alimentation, depuis le nouveau
+  support.
+- **Débrancher le Pico arrête toute la pile**, par `BindsTo=dev-pico.device`
+  dans le service : c'est la sécurité voulue, les moteurs se coupent. Mais
+  l'arrêt est propre, donc `Restart=on-failure` ne relançait rien : d'où
+  `WantedBy=dev-pico.device dev-rplidar.device`, qui fait repartir la pile au
+  rebranchement. `systemctl reenable alidade` après mise à jour du service.
 - Ne jamais compter des messages en s'abonnant à un flux lourd : une image
   640×480 en `rgb8` fait 900 ko, que CycloneDDS fragmente en centaines de
   datagrammes. En `best_effort`, un fragment perdu jette le message entier, et
