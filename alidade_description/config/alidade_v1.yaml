@@ -235,10 +235,15 @@ imu:
   frame: imu_link
   accel_lsb_per_m_s2: 100
   gyro_lsb_per_deg_s: 16
-  # Correction d'échelle du cap gyroscopique, à MESURER en tours complets avec
-  # le LiDAR pour juge (voir README) : 1.0 tant que ce n'est pas fait. Un axe
-  # de gyromètre penché de 8° suffit à coûter 1 %.
-  gyro_scale: 1.0
+  # Correction d'échelle du cap gyroscopique. MESURÉE le 12 sept. 2026 en tours
+  # complets, LiDAR pour juge (corrélation des profils de scan avant/après) :
+  # le gyromètre sur-estime de 2.9 %, symétrique et répétable —
+  #   2 tours à 0.6 rad/s anti-horaire : 1.0299    (roues 0.9975)
+  #   3 tours à 0.9 rad/s anti-horaire : 1.0287    (roues 0.9984)
+  #   2 tours à 0.6 rad/s horaire      : 1.0286    (roues 1.0061)
+  # C'est l'erreur de sensibilité du BNO055, donnée à ±3 % par sa fiche. Zéro
+  # trou dans le flux IMU sur ces trois essais (I2C à 100 kHz).
+  gyro_scale: 0.9718
 
 # Seuils de la supervision (system_monitor.py), en unités du Pi 5. Le SoC
 # commence à se brider vers 85 °C ; 4.8 V est le seuil sous lequel le Pi 5
