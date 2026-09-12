@@ -11,7 +11,7 @@ from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
-from alidade_bringup.params import bringup_share
+from alidade_bringup.params import bringup_share, load_revision, render_config
 
 # Dans l'ordre de demarrage. Les arguments ROS d'un controleur passent par le
 # spawner : c'est ainsi que l'IMU sort sur le topic conventionnel /imu/data_raw
@@ -49,11 +49,16 @@ def spawner(name: str, use_sim_time: bool, controller_ros_args: list | None = No
     )
 
 
-def controller_chain(use_sim_time: bool) -> tuple[list, Node]:
-    """Spawners enchaines dans l'ordre ; retourne les actions et le dernier
-    spawner, sur la fin duquel on peut accrocher la suite."""
+def controller_chain(use_sim_time: bool, revision: str = 'v1') -> tuple[list, Node]:
+    """Spawners enchaines dans l'ordre, plus l'odometrie ; retourne les actions
+    et le dernier spawner, sur la fin duquel on peut accrocher la suite."""
     spawners = [spawner(name, use_sim_time, ros_args) for name, ros_args in CONTROLLERS]
-    actions = [spawners[0]]
+    # Cap du gyromètre, distance des roues : c'est ce noeud qui publie le
+    # repere odom (voir alidade_bringup/odometry.py).
+    odom = Node(package='alidade_bringup', executable='gyro_odom.py', name='gyro_odom',
+                output='screen',
+                parameters=[render_config('odometry.yaml', load_revision(revision), use_sim_time)])
+    actions = [spawners[0], odom]
     for previous, following in zip(spawners, spawners[1:]):
         actions.append(RegisterEventHandler(
             OnProcessExit(target_action=previous, on_exit=[following])))

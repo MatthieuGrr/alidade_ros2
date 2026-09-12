@@ -49,7 +49,7 @@ def setup(context):
         parameters=[controllers_file, {'use_sim_time': use_sim_time}],
     )
 
-    chain, last_spawner = actions.controller_chain(use_sim_time)
+    chain, last_spawner = actions.controller_chain(use_sim_time, revision)
 
     launched = [robot_state_publisher, controller_manager, *chain,
                 actions.include('telemetry.launch.py',

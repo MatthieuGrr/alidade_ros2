@@ -28,7 +28,7 @@ class Meter(Node):
         self.set_parameters([rclpy.parameter.Parameter('use_sim_time', value=True)])
         self.pub = self.create_publisher(TwistStamped, '/diff_drive_controller/cmd_vel', 10)
         self.odom = None
-        self.create_subscription(Odometry, '/diff_drive_controller/odom', self.cb, 10)
+        self.create_subscription(Odometry, '/odom', self.cb, 10)
 
     def cb(self, msg):
         q = msg.pose.pose.orientation

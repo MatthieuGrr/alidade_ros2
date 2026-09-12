@@ -17,6 +17,7 @@ install(PROGRAMS
   scripts/camera_bench.py
   scripts/cube_detector.py
   scripts/cube_docking.py
+  scripts/gyro_odom.py
   DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
@@ -27,6 +28,7 @@ if(BUILD_TESTING)
   ament_add_pytest_test(test_cube test/test_cube.py)
   ament_add_pytest_test(test_cube_pose test/test_cube_pose.py)
   ament_add_pytest_test(test_docking test/test_docking.py)
+  ament_add_pytest_test(test_odometry test/test_odometry.py)
 endif()
 
 ament_package()

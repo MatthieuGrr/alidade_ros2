@@ -224,10 +224,21 @@ camera:
 # BNO055 en mode IMU (6 axes, magnétomètre coupé). Le Pico transmet les
 # entiers bruts ; la conversion SI se fait côté Pi avec ces facteurs
 # (registre UNIT_SEL = 0x00 du composant).
+# BNO055 en mode IMU (fusion accéléromètre + gyromètre, magnétomètre coupé),
+# lue par le Pico. Le gyromètre donne le CAP de l'odométrie (gyro_odom.py) ;
+# l'accéléromètre, lui, n'est PAS utilisé : le firmware n'écrit aucun décalage
+# de calibration, et le capteur lit un roulis de 7.5° et une gravité 2 % trop
+# faible (mesuré le 12 sept. 2026, reproductible après redémarrage à plat).
+# Le gyromètre, en revanche, est excellent : 0.005 °/s de biais, soit 0.3° de
+# dérive par minute, et 0.1 °/s de bruit.
 imu:
   frame: imu_link
   accel_lsb_per_m_s2: 100
   gyro_lsb_per_deg_s: 16
+  # Correction d'échelle du cap gyroscopique, à MESURER en tours complets avec
+  # le LiDAR pour juge (voir README) : 1.0 tant que ce n'est pas fait. Un axe
+  # de gyromètre penché de 8° suffit à coûter 1 %.
+  gyro_scale: 1.0
 
 # Seuils de la supervision (system_monitor.py), en unités du Pi 5. Le SoC
 # commence à se brider vers 85 °C ; 4.8 V est le seuil sous lequel le Pi 5

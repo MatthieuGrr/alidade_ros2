@@ -45,7 +45,10 @@ diff_drive_controller:
     base_frame_id: base_footprint
     odom_frame_id: odom
     publish_rate: 50.0
-    enable_odom_tf: true
+    # gyro_odom.py publie le repere odom -> base_footprint, avec le cap du
+    # gyromètre ; deux sources pour la meme transformation se disputeraient.
+    # Son odometrie roues reste publiee, et sert de temoin.
+    enable_odom_tf: false
     open_loop: false
     position_feedback: true
     # Le twist est derive des positions a 50 Hz : a 0.5 rad/s une roue avance

@@ -71,7 +71,7 @@ def setup(context):
         parameters=[{'use_sim_time': use_sim_time}],
     )
 
-    chain, last_spawner = actions.controller_chain(use_sim_time)
+    chain, last_spawner = actions.controller_chain(use_sim_time, revision)
 
     launched = [
         # Permet a Gazebo de resoudre les URI package:// des maillages.

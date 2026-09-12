@@ -1,0 +1,23 @@
+# Odometrie a cap gyroscopique (gyro_odom.py) : distance des roues, cap du
+# gyromètre. Gabarit rendu au lancement.
+gyro_odom:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    # Echelle mesuree du gyromètre (revision : un axe penche ou une erreur de
+    # sensibilite se voient en tours complets).
+    gyro_scale: ${imu.gyro_scale}
+    # Reestimation du biais : robot immobile selon les roues ET gyromètre
+    # calme, sinon un robot pousse a la main verrait sa rotation prise pour
+    # un biais.
+    still_v: 0.005              # m/s
+    still_w: 0.02               # rad/s
+    still_gyro_deg: 2.0         # deg/s
+    bias_tau: 2.0               # s
+    bias_max_deg: 1.0           # garde-fou : le BNO055 compense deja le sien
+    # Au-dela, l'IMU est consideree muette et le cap revient aux roues.
+    imu_timeout: 0.15           # s
+    # Incertitudes publiees : le cap gyroscopique vaut bien mieux que celui
+    # des roues, et le dire aide amcl a doser ses corrections.
+    yaw_std_deg: 0.3
+    yaw_std_fallback_deg: 5.0
+    xy_std: 0.02                # m

@@ -2,7 +2,7 @@
 """Docking sur le cube : actions /dock_robot et /undock_robot (nav2_msgs).
 
     /cube/dock_pose, /cube/center (base_footprint) --+
-    /diff_drive_controller/odom ---------------------+--> /cmd_vel_nav
+    /odom (roues + gyromètre) -----------------------+--> /cmd_vel_nav
 
 Les types d'action sont ceux du serveur de docking de nav2, pour qu'un
 client (le gestionnaire de modes) n'ait pas a savoir qui les sert ; la
@@ -86,7 +86,7 @@ class CubeDocking(Node):
         self.busy = threading.Lock()
 
         group = ReentrantCallbackGroup()
-        self.create_subscription(Odometry, '/diff_drive_controller/odom', self.on_odom, 20, callback_group=group)
+        self.create_subscription(Odometry, '/odom', self.on_odom, 20, callback_group=group)
         self.create_subscription(PointStamped, '/cube/center', self.on_centre, 10, callback_group=group)
         self.create_subscription(PoseStamped, '/cube/dock_pose', self.on_dock_pose, 10, callback_group=group)
         self.cmd = self.create_publisher(Twist, '/cmd_vel_nav', 10)

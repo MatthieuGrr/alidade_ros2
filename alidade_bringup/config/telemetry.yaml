@@ -30,4 +30,4 @@ system_monitor:
       - "/scan|sensor_msgs/msg/LaserScan|${lidar.rotation_hz}"
       - "/camera/camera_info|sensor_msgs/msg/CameraInfo|${camera.fps}|optional"
       - "/imu/data_raw|sensor_msgs/msg/Imu|${pico.frame_rate_hz}"
-      - "/diff_drive_controller/odom|nav_msgs/msg/Odometry|50"
+      - "/odom|nav_msgs/msg/Odometry|50"
