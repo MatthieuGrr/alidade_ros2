@@ -151,3 +151,90 @@ def test_cube_decale_la_face_choisie_regarde_le_robot(model):
     t = cube.dock_target(*yawed(0, x=0.40, y=0.15), edge, STANDOFF)
     assert t.face_id == 4 and t.yaw == pytest.approx(0.0, abs=1e-12)
     assert t.y == pytest.approx(0.15)
+
+
+# ----------------------------------------------------------------- cube au sol, orientations faussees
+CAMERA = np.array([0.1175, 0.0, 0.104])     # repere optique dans base_footprint
+
+
+def on_floor(yaw_deg, x=0.6, y=0.1, lying=None):
+    """Pose d'un cube au sol dans le repere du robot ; `lying` : rotation
+    supplementaire pour le poser sur une autre face."""
+    pose = np.eye(4)
+    rot = rot_z(yaw_deg)
+    if lying is not None:
+        rot = rot @ lying
+    pose[:3, :3] = rot
+    pose[:3, 3] = [x, y, 0.025]
+    return pose
+
+
+def markers_of(cube_pose, model, ids, twist_deg=0.0):
+    """Poses des marqueurs ; `twist_deg` fausse leur orientation autour de la
+    verticale en gardant leur position, comme le fait le detecteur."""
+    _, faces = model
+    out = {}
+    for i in ids:
+        m = cube_pose @ faces[i].pose
+        m[:3, :3] = rot_z(twist_deg) @ m[:3, :3]
+        out[i] = m
+    return out
+
+
+def yaw_error(rot_a, rot_b):
+    return np.degrees(np.arccos(np.clip((np.trace(rot_a.T @ rot_b) - 1) / 2, -1, 1)))
+
+
+def test_deux_faces_voisines_orientations_fausses(model):
+    edge, faces = model
+    truth = on_floor(142)                               # le cas mesure sur le robot
+    # Chaque face se trompe a sa facon, comme sur le robot (+60 et -40 deg).
+    seen = {**markers_of(truth, model, [2], twist_deg=60), **markers_of(truth, model, [5], twist_deg=-40)}
+    naive = cube.estimate(seen, faces)
+    assert yaw_error(naive.rotation, truth[:3, :3]) > 5      # les orientations seules se trompent
+    assert naive.angle > 30                                   # et se contredisent
+    est = cube.estimate_on_floor(seen, faces, edge, CAMERA)
+    assert est.method == 'geometrie'
+    assert np.allclose(est.position, truth[:3, 3], atol=1e-9)
+    assert yaw_error(est.rotation, truth[:3, :3]) < 1e-6
+
+
+def test_une_face_et_le_dessus_orientations_fausses(model):
+    edge, faces = model
+    truth = on_floor(-20, x=0.35, y=0.0)                # face 4 vers le robot, dessus 1
+    seen = markers_of(truth, model, [1, 4], twist_deg=-45)
+    est = cube.estimate_on_floor(seen, faces, edge, CAMERA)
+    assert est.method == 'geometrie'
+    assert np.allclose(est.position, truth[:3, 3], atol=1e-9)
+    assert yaw_error(est.rotation, truth[:3, :3]) < 1e-6
+
+
+def test_cube_couche_sur_une_autre_face(model):
+    """Rien ne suppose quelle face est dessus : c'est la hauteur mesuree qui le dit."""
+    edge, faces = model
+    truth = on_floor(30, x=0.5, y=0.05, lying=rot_x(90))   # face 5 (+y) passe dessus
+    _, f = model
+    heights = {i: (truth @ f[i].pose)[2, 3] for i in f}
+    top = max(heights, key=heights.get)
+    visibles = [i for i in f if (truth @ f[i].pose)[:3, 2] @ (CAMERA - (truth @ f[i].pose)[:3, 3]) > 0.01]
+    sides = [i for i in visibles if i != top and abs(heights[i] - 0.025) < 1e-6][:2]
+    est = cube.estimate_on_floor(markers_of(truth, model, sides, twist_deg=50), faces, edge, CAMERA)
+    assert est.method == 'geometrie'
+    assert yaw_error(est.rotation, truth[:3, :3]) < 1e-6
+
+
+def test_une_seule_face_repli_sur_l_orientation(model):
+    edge, faces = model
+    truth = on_floor(10, x=0.3, y=0.0)
+    est = cube.estimate_on_floor(markers_of(truth, model, [4]), faces, edge, CAMERA)
+    assert est.method == 'orientation'
+    assert yaw_error(est.rotation, truth[:3, :3]) < 1e-6
+
+
+def test_appariement_incoherent_ignore(model):
+    """Deux marqueurs trop eloignes pour etre deux faces voisines du meme cube."""
+    edge, faces = model
+    seen = markers_of(on_floor(142), model, [2, 5])
+    seen[5] = seen[5].copy()
+    seen[5][:3, 3] += [0.05, 0.0, 0.0]
+    assert cube.estimate_on_floor(seen, faces, edge, CAMERA).method == 'orientation'

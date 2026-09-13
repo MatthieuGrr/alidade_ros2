@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pose du cube cible depuis les detections ArUco, pose d'arret du docking.
 
-    /aruco_detections  ->  /cube/pose       (PoseStamped, repere de la camera)
+    /aruco_detections  ->  /cube/pose       (PoseStamped, base_footprint)
                            /cube/dock_pose  (PoseStamped, base_footprint : ou
                                              s'arreter devant le cube, pour
                                              cube_docking)
@@ -77,39 +77,40 @@ class CubeDetector(Node):
         return self.camera_in_base
 
     def on_detection(self, msg):
+        cam = self.camera_pose(msg.header.frame_id)
+        if cam is None:
+            return
+        # Tout se calcule dans le repere du robot, ou le sol est connu : la pose
+        # du cube s'y tire des POSITIONS des marqueurs des qu'on le peut, leurs
+        # orientations etant douteuses de loin (voir cube.estimate_on_floor).
         markers = {}
         for m in msg.markers:
             p, q = m.pose.position, m.pose.orientation
-            markers[m.marker_id] = cube.matrix([p.x, p.y, p.z], [q.x, q.y, q.z, q.w])
-        est = cube.estimate(markers, self.faces)
+            markers[m.marker_id] = cam @ cube.matrix([p.x, p.y, p.z], [q.x, q.y, q.z, q.w])
+        est = cube.estimate_on_floor(markers, self.faces, self.edge, cam[:3, 3])
         if est is None:
             return
+        header = msg.header.__class__(stamp=msg.header.stamp, frame_id=BASE)
         q = cube.quaternion(est.rotation)
         pose = Pose(position=Point(x=est.position[0], y=est.position[1], z=est.position[2]),
                     orientation=Quaternion(x=q[0], y=q[1], z=q[2], w=q[3]))
-        self.pub_pose.publish(PoseStamped(header=msg.header, pose=pose))
-        target = self.dock_target(msg, est)
-        self.pub_markers.publish(MarkerArray(markers=self.display(msg.header, pose, est, target)))
+        self.pub_pose.publish(PoseStamped(header=header, pose=pose))
+        target = self.dock_target(header, est)
+        self.pub_markers.publish(MarkerArray(markers=self.display(header, pose, est, target)))
 
-    def dock_target(self, msg, est):
+    def dock_target(self, header, est):
         now = self.get_clock().now()
         if self.last_seen is not None and (now - self.last_seen).nanoseconds > 1e9:
             self.side = None        # cube perdu : la prochaine face se choisit librement
         self.last_seen = now
-        cam = self.camera_pose(msg.header.frame_id)
-        if cam is None:
-            return None
-        position = cam[:3, :3] @ est.position + cam[:3, 3]
-        target = cube.dock_target(position, cam[:3, :3] @ est.rotation, self.edge, self.standoff,
+        target = cube.dock_target(est.position, est.rotation, self.edge, self.standoff,
                                   self.side, self.hysteresis)
         if target is None:
             return None
         self.side = target.side
-        dock = PoseStamped()
-        dock.header.stamp = msg.header.stamp      # instant de l'image, pas de la publication
-        dock.header.frame_id = BASE
-        self.pub_centre.publish(PointStamped(header=dock.header, point=Point(
-            x=float(position[0]), y=float(position[1]), z=float(position[2]))))
+        dock = PoseStamped(header=header)         # instant de l'image, pas de la publication
+        self.pub_centre.publish(PointStamped(header=header, point=Point(
+            x=float(est.position[0]), y=float(est.position[1]), z=float(est.position[2]))))
         dock.pose.position = Point(x=target.x, y=target.y, z=0.0)
         dock.pose.orientation = Quaternion(z=math.sin(target.yaw / 2), w=math.cos(target.yaw / 2))
         self.pub_dock.publish(dock)
@@ -122,7 +123,11 @@ class CubeDetector(Node):
             return Marker(header=header, ns='cube', id=mid, type=kind, action=Marker.ADD,
                           lifetime=life, **kw)
 
-        body = marker(0, Marker.CUBE, pose=pose, color=RED if est.angle > DISAGREE_DEG else ORANGE)
+        # Rouge : faces en desaccord SANS que la geometrie ait pu trancher. Quand
+        # la pose vient des positions, des orientations contradictoires sont
+        # attendues de loin et ne disent rien de la pose.
+        doubtful = est.method == 'orientation' and est.angle > DISAGREE_DEG
+        body = marker(0, Marker.CUBE, pose=pose, color=RED if doubtful else ORANGE)
         body.scale.x = body.scale.y = body.scale.z = self.edge
         # Fleche vers la face « devant » (x du cube), a partir de son centre.
         front = marker(1, Marker.ARROW, pose=pose, color=WHITE)
@@ -130,7 +135,8 @@ class CubeDetector(Node):
         label = marker(2, Marker.TEXT_VIEW_FACING, color=WHITE,
                        text=f"cube {', '.join(map(str, est.faces))}"
                             + (f'  -> face {target[1].face_id}' if target else '')
-                            + (f'  ecart {est.spread * 1000:.0f} mm / {est.angle:.0f} deg'
+                            + ('  (geometrie)' if est.method == 'geometrie' else
+                               f'  ecart {est.spread * 1000:.0f} mm / {est.angle:.0f} deg'
                                if len(est.faces) > 1 else ''))
         # Au-dessus du cube, le long de son axe « haut » : la verticale tant
         # qu'il est pose sur sa face 6.

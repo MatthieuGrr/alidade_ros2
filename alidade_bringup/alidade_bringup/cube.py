@@ -35,6 +35,7 @@ class CubePose:
     faces: list[int]        # identifiants qui ont contribue
     spread: float           # plus grand ecart d'une face au centre moyen, en m
     angle: float            # plus grand ecart d'une face a l'orientation moyenne, en degres
+    method: str = 'orientation'   # 'geometrie' : cap tire des POSITIONS des marqueurs
 
 
 def load(path: str | Path) -> tuple[float, dict[int, Face]]:
@@ -93,6 +94,86 @@ def estimate(markers: dict[int, np.ndarray], faces: dict[int, Face]) -> CubePose
     angle = max(np.degrees(np.arccos(np.clip((np.trace(rot.T @ p[:3, :3]) - 1) / 2, -1, 1)))
                 for _, p in poses)
     return CubePose(centre, rot, [i for i, _ in poses], spread, float(angle))
+
+
+# --------------------------------------------------------------- cube au sol
+TOP_Z = 0.0375      # m : centre de marqueur plus haut = face du dessus (25 ou 50 mm)
+PAIR_TOL = 0.008    # m : ecart toleré sur les 35.4 mm entre centres de faces voisines
+
+
+def _frame(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Base orthonormee directe (a, b, a ^ b) en colonnes ; a et b unitaires, orthogonaux."""
+    return np.column_stack([a, b, np.cross(a, b)])
+
+
+def _unit(v: np.ndarray) -> np.ndarray:
+    return v / np.linalg.norm(v)
+
+
+def estimate_on_floor(markers: dict[int, np.ndarray], faces: dict[int, Face], edge: float,
+                      camera: np.ndarray) -> CubePose | None:
+    """Pose d'un cube POSE AU SOL, repere du robot (z vers le haut).
+
+    Un marqueur de 20 px, vu de loin, a deux orientations presque aussi
+    probables, et le detecteur choisit la mauvaise la plupart du temps :
+    mesure a 70 cm, cube vu en coin, 80 % des images. Sa POSITION, elle, reste
+    juste au millimetre. On tire donc la pose des positions des qu'on le peut,
+    sans rien supposer de la face qui est en dessus :
+
+    - deux faces verticales voisines : le segment entre leurs centres fait 45
+      degres avec chacune ; son sens, et le fait que les deux faces regardent
+      forcement la camera, donnent leurs deux normales, donc le cap ;
+    - une face verticale et le dessus : le centre du dessus donne le centre du
+      cube, et la direction dessus -> face verticale donne la normale de celle-ci ;
+    - sinon (une seule face) : son orientation, faute de mieux. De pres, quand
+      il ne reste que le dessus, le marqueur est grand et l'orientation sure.
+
+    Quelle face est dessus ne se lit pas sur l'orientation, douteuse : c'est la
+    hauteur mesuree du centre de son marqueur, 50 mm contre 25.
+    """
+    seen = {i: m for i, m in markers.items() if i in faces}
+    if not seen:
+        return None
+    oriented = estimate(seen, faces)          # repli, et mesure du desaccord des orientations
+    up = np.array([0.0, 0.0, 1.0])
+    pos = {i: m[:3, 3] for i, m in seen.items()}
+    tops = [i for i in seen if pos[i][2] >= TOP_Z]
+    sides = [i for i in seen if pos[i][2] < TOP_Z]
+
+    def result(centre, normals_cube, normals_base):
+        rot = _frame(*normals_base) @ _frame(*normals_cube).T
+        return CubePose(centre, rot, sorted(seen), oriented.spread, oriented.angle, 'geometrie')
+
+    horizontal = lambda v: np.array([v[0], v[1], 0.0])
+
+    # Deux faces verticales voisines.
+    for i in sides:
+        for j in sides:
+            ni, nj = faces[i].pose[:3, 2], faces[j].pose[:3, 2]
+            if i >= j or abs(ni @ nj) > 0.1:
+                continue                      # meme face ou faces opposees
+            d = horizontal(pos[i] - pos[j])
+            if abs(np.linalg.norm(d) - edge / np.sqrt(2)) > PAIR_TOL:
+                continue                      # appariement incoherent : on n'y croit pas
+            u = _unit(d)
+            for w in (np.cross(up, u), -np.cross(up, u)):
+                Ni, Nj = (u + w) / np.sqrt(2), (w - u) / np.sqrt(2)
+                facing = Ni @ (camera - pos[i]) > 0 and Nj @ (camera - pos[j]) > 0
+                if facing:
+                    centre = (pos[i] + pos[j]) / 2 - (Ni + Nj) * edge / 4
+                    centre[2] = edge / 2
+                    return result(centre, (ni, nj), (Ni, Nj))
+
+    # Une face verticale et le dessus.
+    if tops and sides:
+        t, i = tops[0], sides[0]
+        centre = pos[t] - up * edge / 2
+        Ni = _unit(horizontal(pos[i] - centre))
+        nt, ni = faces[t].pose[:3, 2], faces[i].pose[:3, 2]
+        if abs(nt @ ni) < 0.1:
+            return result(centre, (ni, nt), (Ni, up))
+
+    return oriented
 
 
 # Faces verticales du cube, par l'axe de sa normale sortante : (colonne de la
