@@ -18,7 +18,11 @@ cube_detector:
     # du cube est encore dans l'image (voir blind_distance plus bas).
     gap: 0.05
     front_x: ${footprint.front_x} # m, base_footprint -> face avant du robot
-    hysteresis_deg: 15.0          # changement de face vise : il faut mieux de 15 degres
+    # Changement de face visee : il faut mieux de 30 deg. Sur un cube vu pile en
+    # coin, les deux faces sont a egalite, et le cap tire des positions tremble
+    # de +-10 deg a un metre (profondeur des marqueurs a +-2 a 6 mm) : a 15 deg,
+    # la cible basculait encore d'une face a l'autre.
+    hysteresis_deg: 30.0
     # m, camera -> marqueur. Au-dela, une face vue SEULE ne donne pas de pose :
     # son orientation bascule de loin (60 deg a 70 cm). Deux faces restent
     # exploitables a toute distance, la pose se tirant alors de leurs positions.
