@@ -97,8 +97,8 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    seuils (température, rail 5 V, WiFi, cadences) sont dans la section
    `telemetry` de la révision.
 
-   La caméra est montée à l'endroit, inclinée vers le sol (25° en CAO,
-   28,2° mesurés, voir plus bas) : `/camera/image_raw` sort du pilote et se
+   La caméra est montée à l'endroit, inclinée vers le sol (20° en CAO,
+   23,5° mesurés, voir plus bas) : `/camera/image_raw` sort du pilote et se
    consomme telle quelle. Sans `/dev/camera`, le launch le dit et continue
    sans caméra.
 
@@ -118,7 +118,7 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    rien ne le signale.
 
    *Mise au point*, sur le robot, mire tenue immobile bien en face de la
-   caméra (donc penchée de 25°), à deux distances qui encadrent l'usage :
+   caméra (donc penchée d'environ 23°), à deux distances qui encadrent l'usage :
    ```bash
    ros2 run alidade_bringup camera_bench.py focus 0 10 20 25 30 35 40 50 60
    ```
@@ -162,11 +162,11 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    `marker_<id>` portent un biais d'échelle. Portée mesurée sur images
    parfaites : 0,15 à 1,5 m, la limite basse venant du champ de vision et la
    haute d'un côté apparent tombé à 14 px. Sur un cube posé au sol, la
-   caméra étant fixe, inclinée de 28,2° (mesurés) et son axe optique à
-   10,3 cm du sol, le cube reste entier dans l'image de **8 à 42 cm** de la
-   face avant du robot (focale calibrée, fy = 646 px) ; l'approche se
-   travaille à 30 cm. Au-delà, il faut le chercher au LiDAR ou sur la
-   carte ; en deçà, l'approche finale se fait à l'odométrie.
+   caméra étant fixe, inclinée de 23,5° (mesurés) et son axe optique à
+   10,4 cm du sol, le cube reste entier dans l'image de **10 cm à environ
+   1 m** de la face avant du robot (focale calibrée, fy = 646 px). Plus
+   près, seul le dessus reste visible, jusqu'à 5,5 cm ; en deçà, l'approche
+   finale se fait à l'odométrie.
 
    **Vérifier que le support de caméra est conforme à la CAO.** L'URDF le
    suppose incliné de 25° pile et sans dévers, et un écart ne se voit pas à
@@ -287,9 +287,9 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    ses templates.
 
    **Docking sur le cube** (`DOCKING` 5) : amener le robot à portée, cube
-   dans le champ et à moins de ~12° de l'axe, de 8 à 42 cm devant ; puis le
+   dans le champ et à moins de ~12° de l'axe, entre 5 cm et 1 m ; puis le
    bouton DOCKING du widget Alidade (ou `set_mode` 5). Refusé si le cube
-   n'est pas vu. Le robot s'arrête à **10 cm** de la face du cube la plus
+   n'est pas vu. Le robot s'arrête à **5 cm** de la face du cube la plus
    tournée vers lui, dans son axe ; « Dégager » le fait reculer de 15 cm,
    et redemander DOCKING relance une approche. Deux nœuds :
    - `cube_detector.py` : pose du cube depuis les faces vues, et pose
@@ -299,7 +299,8 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    - `cube_docking.py` : actions `/dock_robot` et `/undock_robot` (types
      `nav2_msgs`). Mise en place à l'odométrie dans l'axe de la face, 20 cm
      en retrait, si le robot en est trop loin ; puis approche asservie sur la
-     vision jusqu'à la **ligne** d'arrêt ; contrôle de l'arrivée, reprise si
+     vision jusqu'à la **ligne** d'arrêt, les 4 derniers centimètres à
+     l'odométrie si le cube sort du champ ; contrôle de l'arrivée, reprise si
      hors tolérance (1,5 cm, 5°).
 
    Réglages dans `alidade_bringup/config/docking.yaml`, logique testée sans
