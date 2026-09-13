@@ -73,8 +73,10 @@ class CubeDocking(Node):
         self.rate = p('rate', 20.0)
         self.detection_timeout = p('detection_timeout', 1.0)
         self.latency_ns = int(p('detection_latency', 0.35) * 1e9)
+        self.add_on_set_parameters_callback(self.on_params)
         self.filter = docking.TargetFilter(k_pos=p('filter_position', 0.3), k_yaw=p('filter_yaw', 0.1))
         self.max_retries = p('max_retries', 2)
+        self.max_restage = p('max_restage', 2)
         self.undock_distance = p('undock_distance', 0.15)
         self.stage_timeout = p('stage_timeout', 30.0)
 
@@ -111,6 +113,17 @@ class CubeDocking(Node):
             if stamp_ns is None:
                 return self.odom[-1][1]
             return min(self.odom, key=lambda e: abs(e[0] - stamp_ns))[1]
+
+    def on_params(self, changes):
+        """Reglages modifiables a chaud, pour les campagnes d'essais."""
+        from rcl_interfaces.msg import SetParametersResult
+        for c in changes:
+            if c.name == 'detection_latency':
+                self.latency_ns = int(c.value * 1e9)
+                self.get_logger().info(f'latence de detection : {c.value:.3f} s')
+            elif c.name == 'blind_distance':
+                self.g.blind = c.value
+        return SetParametersResult(successful=True)
 
     def on_centre(self, msg):
         with self.lock:
@@ -232,15 +245,26 @@ class CubeDocking(Node):
         target = self.fresh_target() or (self.last_target() if retry else None)
         if target is None:
             raise Failure(RES.FAILED_TO_DETECT_DOCK, 'cube non vu')
-        if docking.staging_needed(self.robot_at(), target, self.g):
+        # Mise en place, refaite tant que la cible vue a l'arrivee ne correspond
+        # plus : partie de loin, elle vise une pose estimee a un metre (cap a
+        # +-10 deg), et le cube, hors du champ pendant les pivots, peut
+        # reapparaitre sous une autre face. Constate sur le robot : sans cette
+        # reprise, l'approche visait une cible a 17 cm et 58 deg, et le docking
+        # coutait deux reprises et 32 s.
+        for passes in range(1 + self.max_restage):
+            if not docking.staging_needed(self.robot_at(), target, self.g):
+                break
             feedback.state = FB.NAV_TO_STAGING_POSE
             handle.publish_feedback(feedback)
+            if passes:
+                self.get_logger().info(f'cible changee apres la mise en place, nouvelle mise en place ({passes})')
             self.stage(handle, target.ahead(-self.g.staging), feedback)
-        # Le cube a pu sortir du champ pendant les pivots : on attend qu'il
-        # revienne avant de s'asservir dessus.
-        feedback.state = FB.INITIAL_PERCEPTION
-        handle.publish_feedback(feedback)
-        self.loop(handle, lambda: self.fresh_target() is not None, 3.0, 'cube non revu apres la mise en place')
+            # Le cube a pu sortir du champ pendant les pivots : on attend qu'il
+            # revienne avant de juger la mise en place.
+            feedback.state = FB.INITIAL_PERCEPTION
+            handle.publish_feedback(feedback)
+            self.loop(handle, lambda: self.fresh_target() is not None, 3.0, 'cube non revu apres la mise en place')
+            target = self.fresh_target()
         feedback.state = FB.CONTROLLING
 
         blind = {'since': None}

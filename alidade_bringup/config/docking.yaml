@@ -46,6 +46,7 @@ cube_docking:
     lateral_tolerance: 0.015      # m, arrivee acceptee...
     yaw_tolerance_deg: 5.0        # ... sinon reprise depuis la mise en place
     max_retries: 2
+    max_restage: 2                # mises en place supplementaires si la cible a change entre-temps
     # Fin d'approche a l'odometrie quand le cube sort du champ a moins de
     # cette distance de la ligne d'arret. Mesure sur le robot, camera a 23.5
     # deg : la face tournee vers le robot disparait entre 11 et 7.5 cm
