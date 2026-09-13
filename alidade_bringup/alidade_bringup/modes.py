@@ -87,7 +87,7 @@ def plan(ctx: Context, target: int, map_name: str = '') -> Plan:
         if ctx.current == DOCKING and ctx.docking_active:
             return Plan(target, [], ctx.current_map)
         if not ctx.cube_visible:
-            raise Refused('DOCKING : cube non vu (a amener dans le champ, entre 5 cm et 1 m devant le robot)')
+            raise Refused('DOCKING : pas de pose sure du cube (a moins de 45 cm, ou deux faces nettes en coin)')
         if ctx.current == DOCKING:
             return Plan(target, [('dock', 'start', '')], ctx.current_map)
 

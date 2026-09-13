@@ -53,11 +53,17 @@ cube_docking:
     # d'ecart, le dessus entre 5.5 et 4 cm.
     blind_distance: 0.04          # m
     detection_timeout: 1.0        # s sans detection : cube perdu
-    # Age reel d'une detection a sa reception, MESURE par une rotation sur
-    # place (debut du mouvement vu par l'odometrie, puis par la camera). On ne
-    # se sert PAS de l'horodatage de l'image : usb_cam la date d'environ 0.5 s
-    # trop tot (790 ms d'age apparent pour 300 ms reels).
-    detection_latency: 0.35
+    # Recalage des detections sur la pose du robot : heure de reception moins
+    # cette duree (l'horodatage de l'image, lui, est faux d'environ 0.5 s).
+    # CALIBREE sur l'ecart final reel, pas mesuree : a 5 cm/s de fin
+    # d'approche, chaque 0.1 s deplace l'arret de 5 mm. Campagnes du 13 sept.
+    # 2026, ecart reel mesure en reculant jusqu'a 30 cm, ou la camera est juste :
+    #   0.35 s -> 6.0 / 6.0 / 6.1 cm      0.0 s -> 4.3 / 4.2 / 4.2 cm
+    #   0.15 s -> 5.1 / 5.1 / 4.9 cm      (vise : 5.0)
+    # Une rotation sur place donnait 300 ms de latence camera : la valeur
+    # retenue absorbe aussi le retard de l'odometrie et le biais de la camera
+    # de pres. A recalibrer si la vitesse de fin d'approche (v_min) change.
+    detection_latency: 0.15
     # Lissage de la cible dans odom, a 15 Hz : centre du cube vite, cap de la
     # face lentement (il bascule de +-8 degres d'une image a l'autre).
     filter_position: 0.3

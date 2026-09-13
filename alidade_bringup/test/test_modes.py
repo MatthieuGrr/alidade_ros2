@@ -78,7 +78,7 @@ def test_unknown_mode_is_refused():
 
 
 def test_docking_needs_the_cube_in_view():
-    with pytest.raises(m.Refused, match='cube non vu'):
+    with pytest.raises(m.Refused, match='pas de pose sure'):
         m.plan(m.Context(current=m.IDLE), m.DOCKING)
     p = m.plan(m.Context(current=m.IDLE, cube_visible=True), m.DOCKING)
     assert steps(p) == [('nav', 'cancel'), ('dock', 'start')]
@@ -100,7 +100,7 @@ def test_docking_again_restarts_the_approach_only_when_stopped():
     assert steps(m.plan(stopped, m.DOCKING)) == [('dock', 'start')]
     running = m.Context(current=m.DOCKING, cube_visible=True, docking_active=True)
     assert m.plan(running, m.DOCKING).steps == []
-    with pytest.raises(m.Refused, match='cube non vu'):
+    with pytest.raises(m.Refused, match='pas de pose sure'):
         m.plan(m.Context(current=m.DOCKING), m.DOCKING)
 
 

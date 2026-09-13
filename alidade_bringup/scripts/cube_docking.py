@@ -72,7 +72,7 @@ class CubeDocking(Node):
             blind=p('blind_distance', 0.04))
         self.rate = p('rate', 20.0)
         self.detection_timeout = p('detection_timeout', 1.0)
-        self.latency_ns = int(p('detection_latency', 0.35) * 1e9)
+        self.latency_ns = int(p('detection_latency', 0.15) * 1e9)
         self.add_on_set_parameters_callback(self.on_params)
         self.filter = docking.TargetFilter(k_pos=p('filter_position', 0.3), k_yaw=p('filter_yaw', 0.1))
         self.max_retries = p('max_retries', 2)

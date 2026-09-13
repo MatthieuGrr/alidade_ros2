@@ -287,7 +287,8 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    ses templates.
 
    **Docking sur le cube** (`DOCKING` 5) : amener le robot à portée, cube
-   dans le champ et à moins de ~12° de l'axe, entre 5 cm et 1 m ; puis le
+   dans le champ et à **moins de 45 cm** (plus loin, seulement vu en coin,
+   deux faces nettes : une face seule y a une orientation douteuse) ; puis le
    bouton DOCKING du widget Alidade (ou `set_mode` 5). Refusé si le cube
    n'est pas vu. Le robot s'arrête à **5 cm** de la face du cube la plus
    tournée vers lui, dans son axe ; « Dégager » le fait reculer de 15 cm,
@@ -304,11 +305,25 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
      hors tolérance (1,5 cm, 5°).
 
    Réglages dans `alidade_bringup/config/docking.yaml`, logique testée sans
-   ROS dans `alidade_bringup/docking.py` et `cube.py`. Essais sur le robot
-   le 11 sept. 2026, tous réussis du premier coup : départ dans l'axe,
-   arrivée à 1 mm et 1,1° en 2,9 s ; départ à 9° et 3,4 cm, 2 mm et 1,0° en
-   3,0 s ; départ décalé de 7,7 cm (mise en place), 8 mm et 4,2° en 8,5 s.
-   Écart final mesuré par la caméra : 10,4 à 10,6 cm.
+   ROS dans `alidade_bringup/docking.py` et `cube.py`. **Campagnes du 13 sept.
+   2026** (caméra à 23,5°, arrêt visé à 5 cm), l'écart réel étant mesuré en
+   reculant d'une distance connue jusqu'à 30 cm, où la caméra est juste — de
+   très près elle ne voit plus que le dessus, flou, au bord de l'image :
+   - départs à ~30 cm, ±10° : 7 essais sur 7 réussis, 6 du premier coup,
+     4 à 6 s, latéral 0 à 5 mm, cap 0,3 à 2,8° ;
+   - écart réel **5,1 / 5,1 / 4,9 cm** avec `detection_latency: 0.15` (6,0 cm
+     à 0,35 s, 4,2 cm à 0 s : 5 mm d'écart par 0,1 s, c'est une constante
+     calibrée) ;
+   - départ en coin à 95 cm : réussi, mais après deux reprises (la mise en
+     place est depuis refaite quand la cible change) ; à 60 cm avec une face
+     très oblique, pose trop rare, docking refusé : c'est la limite de
+     marqueurs de 40 mm à cette distance.
+   Le cap résiduel d'environ 2,5° à l'arrivée est voulu : la loi garde un
+   léger cap pour rattraper les derniers millimètres latéraux, trop petits
+   pour la zone morte des moteurs.
+
+   Pour revalider après un réglage :
+   `ros2 run alidade_bringup dock_campaign.py n:0.15,n:0.15,n:0.15`.
 
    Sans robot, `aruco_bench.py fake-cube <x> <y> <cap>` publie en simulation
    les détections d'un cube posé dans `odom`, avec la latence mesurée sur le
