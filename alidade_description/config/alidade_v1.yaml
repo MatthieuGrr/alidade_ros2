@@ -177,13 +177,24 @@ lidar:
 # incliné de 20° vers le sol d'après la CAO (support refait le 13 sept. 2026 ;
 # l'ancien était à 25°). L'image du pilote se consomme directement.
 #
-# Inclinaison RÉELLE à mesurer au cube (contrôle d'aplomb, README) et à
-# reporter dans mount_rpy, rotation ajoutée dans le repère optique, dont x est
-# la droite de l'image : plonger davantage, c'est tourner négativement autour.
-# L'ancien support mesurait 3.2° de plus que sa CAO, dont environ 1° d'assiette
-# du châssis (mesuré au niveau) : cette correction ne vaut plus pour le nouveau.
+# MESURÉ au cube le 13 sept. 2026, caméra calibrée, face à 31 cm : la caméra
+# plonge de 23.5°, 3.5° de plus que la CAO. Avec 20°, les marqueurs sortaient
+# 20 mm trop haut (44.3 au lieu de 25 mm pour la face tournée vers le robot,
+# 70.5 au lieu de 50 pour le dessus) ; une seule rotation remet les deux, à
+# 0.07° près l'une de l'autre. L'ancien support à 25° mesurait lui aussi 3.2°
+# de plus que sa CAO : un écart à peu près constant quel que soit le support,
+# donc commun (assiette du châssis, environ 1° au niveau, et axe du capteur
+# dans son boîtier) plutôt que dû au support. mount_rpy l'ajoute dans le
+# repère optique, dont x est la droite de l'image : plonger davantage, c'est
+# tourner négativement autour.
+#
+# Champ utile (focale calibrée, fy = 646 px, demi-ouverture verticale 20.4°,
+# axe optique à 104 mm du sol, face avant du robot à x = 120 mm) : le cube
+# entier reste dans l'image de 10 cm à environ 1 m de la face avant ; le
+# dessus seul, jusqu'à 5 cm, où le bas de l'image coupe déjà sa marge blanche.
 camera:
   frame: camera_optical_frame
+  mount_rpy: [-0.0614, 0.0, 0.0]   # -3.52° autour de x optique, voir plus haut
   device: /dev/camera          # règle udev, index 0 de la C920 (l'index 1 est la métadonnée)
   width: 640                   # suffisant pour un marqueur de 10 cm à moins d'un mètre
   height: 480
