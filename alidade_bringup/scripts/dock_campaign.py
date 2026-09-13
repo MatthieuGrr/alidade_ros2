@@ -30,7 +30,10 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from std_srvs.srv import Trigger
 
-# Essais : 'n:0.35' = depart de pres, latence 0.35 s ; 'f:0.0' = recul de 40 cm d'abord.
+if len(sys.argv) < 2 or sys.argv[1] in ('-h', '--help'):
+    print(__doc__)
+    sys.exit(0)
+# Essais : 'n:0.15' = depart d'ou est le robot ; 'f:0.15' = recul de 40 cm d'abord.
 SPEC = [x.split(':') for x in (sys.argv[1] if len(sys.argv) > 1 else 'n:0.35').split(',')]
 TRIALS = len(SPEC)
 PERTURB = [0.0, 10.0, -10.0, 6.0, -6.0, 0.0]      # rotation avant chaque essai, deg
