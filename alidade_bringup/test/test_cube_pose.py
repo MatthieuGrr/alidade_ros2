@@ -231,6 +231,20 @@ def test_une_seule_face_repli_sur_l_orientation(model):
     assert yaw_error(est.rotation, truth[:3, :3]) < 1e-6
 
 
+def test_face_seule_de_loin_pas_de_pose(model):
+    edge, faces = model
+    loin = on_floor(10, x=0.9, y=0.0)
+    assert cube.estimate_on_floor(markers_of(loin, model, [4]), faces, edge, CAMERA,
+                                  single_face_range=0.45) is None
+    pres = on_floor(10, x=0.35, y=0.0)
+    est = cube.estimate_on_floor(markers_of(pres, model, [4]), faces, edge, CAMERA, single_face_range=0.45)
+    assert est is not None and est.method == 'orientation'
+    # deux faces de loin : la geometrie reste valable
+    deux = cube.estimate_on_floor(markers_of(on_floor(142, x=0.9), model, [2, 5]), faces, edge, CAMERA,
+                                  single_face_range=0.45)
+    assert deux is not None and deux.method == 'geometrie'
+
+
 def test_appariement_incoherent_ignore(model):
     """Deux marqueurs trop eloignes pour etre deux faces voisines du meme cube."""
     edge, faces = model

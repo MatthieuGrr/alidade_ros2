@@ -45,6 +45,7 @@ class CubeDetector(Node):
         gap = self.declare_parameter('gap', 0.10).value
         front = self.declare_parameter('front_x', 0.120).value
         self.hysteresis = self.declare_parameter('hysteresis_deg', 15.0).value
+        self.single_face_range = self.declare_parameter('single_face_range', 0.45).value
         self.standoff = gap + front
         self.edge, self.faces = cube.load(path)
         self.side = None            # face visee, gardee d'une image a l'autre
@@ -87,7 +88,7 @@ class CubeDetector(Node):
         for m in msg.markers:
             p, q = m.pose.position, m.pose.orientation
             markers[m.marker_id] = cam @ cube.matrix([p.x, p.y, p.z], [q.x, q.y, q.z, q.w])
-        est = cube.estimate_on_floor(markers, self.faces, self.edge, cam[:3, 3])
+        est = cube.estimate_on_floor(markers, self.faces, self.edge, cam[:3, 3], self.single_face_range)
         if est is None:
             return
         header = msg.header.__class__(stamp=msg.header.stamp, frame_id=BASE)

@@ -19,6 +19,10 @@ cube_detector:
     gap: 0.05
     front_x: ${footprint.front_x} # m, base_footprint -> face avant du robot
     hysteresis_deg: 15.0          # changement de face vise : il faut mieux de 15 degres
+    # m, camera -> marqueur. Au-dela, une face vue SEULE ne donne pas de pose :
+    # son orientation bascule de loin (60 deg a 70 cm). Deux faces restent
+    # exploitables a toute distance, la pose se tirant alors de leurs positions.
+    single_face_range: 0.45
 
 cube_docking:
   ros__parameters:

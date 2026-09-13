@@ -111,7 +111,7 @@ def _unit(v: np.ndarray) -> np.ndarray:
 
 
 def estimate_on_floor(markers: dict[int, np.ndarray], faces: dict[int, Face], edge: float,
-                      camera: np.ndarray) -> CubePose | None:
+                      camera: np.ndarray, single_face_range: float | None = None) -> CubePose | None:
     """Pose d'un cube POSE AU SOL, repere du robot (z vers le haut).
 
     Un marqueur de 20 px, vu de loin, a deux orientations presque aussi
@@ -125,8 +125,12 @@ def estimate_on_floor(markers: dict[int, np.ndarray], faces: dict[int, Face], ed
       forcement la camera, donnent leurs deux normales, donc le cap ;
     - une face verticale et le dessus : le centre du dessus donne le centre du
       cube, et la direction dessus -> face verticale donne la normale de celle-ci ;
-    - sinon (une seule face) : son orientation, faute de mieux. De pres, quand
-      il ne reste que le dessus, le marqueur est grand et l'orientation sure.
+    - sinon (une seule face) : son orientation, mais seulement a moins de
+      `single_face_range` de la camera. De pres le marqueur est grand et son
+      orientation sure (faces d'accord a 1-3 deg a 30 cm) ; de loin elle
+      bascule (60 deg a 70 cm, et a un metre ces bascules faisaient changer
+      de face visee un cube vu en coin). Au-dela, pas de pose plutot qu'une
+      pose fausse.
 
     Quelle face est dessus ne se lit pas sur l'orientation, douteuse : c'est la
     hauteur mesuree du centre de son marqueur, 50 mm contre 25.
@@ -173,6 +177,9 @@ def estimate_on_floor(markers: dict[int, np.ndarray], faces: dict[int, Face], ed
         if abs(nt @ ni) < 0.1:
             return result(centre, (ni, nt), (Ni, up))
 
+    if single_face_range is not None and \
+            min(np.linalg.norm(p - camera) for p in pos.values()) > single_face_range:
+        return None
     return oriented
 
 
