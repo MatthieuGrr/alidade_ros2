@@ -612,6 +612,18 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   mais orientation oscillant sur 3° (et sur 20° quand le support de caméra
   était de travers). La position d'un marqueur isolé est donc exploitable,
   son orientation non — c'est l'argument pour combiner plusieurs faces.
+  **De loin, c'est pire, et `aruco_opencv` choisit le plus souvent la mauvaise
+  solution** : cube vu en coin à 70 cm–1 m, marqueurs de 20 px, orientation
+  fausse sur 80 % des images, avec des bascules de 60°. Les faces se
+  contredisaient, et la face visée par le docking changeait sans cesse.
+  Leurs **positions**, elles, restent justes au millimètre. D'où
+  `cube.estimate_on_floor`, dans le repère du robot où le sol est connu :
+  deux faces verticales voisines donnent le cap par le segment qui joint leurs
+  centres ; une face et le dessus, par la direction du dessus vers la face ;
+  une face seule n'est crue qu'à moins de 45 cm. Le dessus se reconnaît à la
+  hauteur de son marqueur, pas à son orientation. Mesuré sur la même scène :
+  cap de la pose d'arrêt passé de −52°/+52° (bascules) à une dispersion de
+  8,6° sur une seule face, hystérésis de face portée à 30°.
 - La détection est très sensible au **contre-jour**. Face à une baie vitrée,
   l'exposition automatique se règle sur la fenêtre et sous-expose la pièce :
   taux de détection tombé à 23 % puis à zéro quand le soleil a tourné, contre
