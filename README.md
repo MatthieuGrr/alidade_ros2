@@ -169,7 +169,7 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    finale se fait à l'odométrie.
 
    **Vérifier que le support de caméra est conforme à la CAO.** L'URDF le
-   suppose incliné de 25° pile et sans dévers, et un écart ne se voit pas à
+   suppose incliné comme sa CAO (20°) plus `camera.mount_rpy` et sans dévers, et un écart ne se voit pas à
    l'image : il se traduit par une erreur de hauteur sur tout ce qu'on
    détecte. Poser le cube au sol à ~30 cm, au milieu du champ, puis :
    ```bash
