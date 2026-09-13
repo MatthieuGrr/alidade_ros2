@@ -77,7 +77,7 @@ frames:
     laser:                [ 0.0456,  0.0,     0.1537]
     imu_link:             [-0.0002,  0.0,     0.1289]
     camera_link:          [ 0.1032,  0.0,     0.1252]
-    camera_optical_frame: [ 0.1157,  0.0,     0.1028]
+    camera_optical_frame: [ 0.1175,  0.0,     0.1039]
     caster_wheel_link:    [ 0.0970,  0.0,     0.0111]
 
 # ---------------------------------------------------------------------------
@@ -174,28 +174,16 @@ lidar:
   serial_baudrate: 460800    # propre au C1
 
 # Logitech C920 HD Pro (046d:082d), sur USB, montée à l'endroit sur un support
-# incliné de 25° vers le sol d'après la CAO. L'image du pilote se consomme
-# directement.
+# incliné de 20° vers le sol d'après la CAO (support refait le 13 sept. 2026 ;
+# l'ancien était à 25°). L'image du pilote se consomme directement.
 #
-# MESURÉ sur le robot le 11 sept. 2026, caméra calibrée : elle plonge de
-# 28.2°, 3.2° de plus que la CAO. Cube au sol, face à 30 cm de la face avant
-# du robot : avec 25°, les marqueurs sortaient 18 mm trop haut (42.5 au lieu
-# de 25 mm pour la face tournée vers le robot, 68.9 au lieu de 50 pour le
-# dessus) ; une seule rotation de 3.2° remet les deux hauteurs et la distance
-# (424 mm pour ~420). mount_rpy l'ajoute dans le repère optique, dont x est la
-# droite de l'image : plonger davantage, c'est tourner négativement autour.
-# D'où viennent ces 3.2° (support ou assiette du châssis) n'est pas établi ;
-# si c'est le châssis, le LiDAR penche aussi.
-#
-# Champ utile : focale calibrée (fy = 646 px, demi-ouverture verticale 20.4°),
-# axe optique à 103 mm du sol, face avant du robot à x = 120 mm : un cube de
-# 50 mm posé au sol reste entier dans l'image de 8 à 42 cm de la face avant,
-# et l'axe optique touche le sol à 19 cm. C'est voulu : la caméra ne sert qu'à
-# l'approche finale, travaillée à 30 cm ; la recherche plus lointaine est
-# l'affaire du LiDAR et de la carte.
+# Inclinaison RÉELLE à mesurer au cube (contrôle d'aplomb, README) et à
+# reporter dans mount_rpy, rotation ajoutée dans le repère optique, dont x est
+# la droite de l'image : plonger davantage, c'est tourner négativement autour.
+# L'ancien support mesurait 3.2° de plus que sa CAO, dont environ 1° d'assiette
+# du châssis (mesuré au niveau) : cette correction ne vaut plus pour le nouveau.
 camera:
   frame: camera_optical_frame
-  mount_rpy: [-0.05585, 0.0, 0.0]   # -3.2° autour de x optique, voir plus haut
   device: /dev/camera          # règle udev, index 0 de la C920 (l'index 1 est la métadonnée)
   width: 640                   # suffisant pour un marqueur de 10 cm à moins d'un mètre
   height: 480
