@@ -69,6 +69,14 @@ class Gains:
     skip_lat: float = 0.025      # m, ...
     skip_yaw: float = math.radians(10.0)  # ... et de ce cap...
     skip_min_run: float = 0.12   # m, ... s'il reste au moins cette course
+    # Fin d'approche a l'aveugle : a moins de `blind` de la ligne d'arret, un
+    # cube perdu de vue n'arrete pas l'approche, qui se termine a l'odometrie
+    # sur la derniere cible connue. De pres, le bas de l'image coupe le cube :
+    # mesure sur le robot (camera a 23.5 deg), la face tournee vers le robot
+    # disparait entre 11 et 7.5 cm d'ecart, le dessus entre 5.5 et 4 cm. Le
+    # cube est immobile et le cap vient du gyromètre : quelques centimetres a
+    # l'odometrie ne coutent rien.
+    blind: float = 0.04          # m
 
 
 def errors(robot: Pose2D, dock: Pose2D) -> tuple[float, float, float]:
@@ -82,6 +90,12 @@ def errors(robot: Pose2D, dock: Pose2D) -> tuple[float, float, float]:
 def staging_needed(robot: Pose2D, dock: Pose2D, g: Gains) -> bool:
     along, lat, yaw = errors(robot, dock)
     return not (abs(lat) < g.skip_lat and abs(yaw) < g.skip_yaw and along < -g.skip_min_run)
+
+
+def may_finish_blind(robot: Pose2D, dock: Pose2D, g: Gains) -> bool:
+    """Vrai si le robot est assez pres de la ligne d'arret pour finir sans voir le cube."""
+    along, _, _ = errors(robot, dock)
+    return along >= -g.blind
 
 
 def arrived_ok(robot: Pose2D, dock: Pose2D, g: Gains) -> bool:

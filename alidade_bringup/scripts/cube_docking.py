@@ -68,7 +68,8 @@ class CubeDocking(Node):
             w_max=p('w_max', 0.8), w_min=p('w_min', 0.45), k_v=p('k_v', 1.0),
             k_yaw=p('k_yaw', 2.0), k_lat=p('k_lat', 10.0),
             lat_tol=p('lateral_tolerance', 0.015),
-            arrive_yaw_tol=math.radians(p('yaw_tolerance_deg', 5.0)))
+            arrive_yaw_tol=math.radians(p('yaw_tolerance_deg', 5.0)),
+            blind=p('blind_distance', 0.04))
         self.rate = p('rate', 20.0)
         self.detection_timeout = p('detection_timeout', 1.0)
         self.latency_ns = int(p('detection_latency', 0.35) * 1e9)
@@ -242,11 +243,21 @@ class CubeDocking(Node):
         self.loop(handle, lambda: self.fresh_target() is not None, 3.0, 'cube non revu apres la mise en place')
         feedback.state = FB.CONTROLLING
 
+        blind = {'since': None}
+
         def step():
-            target = self.fresh_target()
+            robot, target = self.robot_at(), self.fresh_target()
             if target is None:
-                raise Failure(RES.FAILED_TO_DETECT_DOCK, 'cube perdu pendant l approche')
-            v, w, done = docking.approach(self.robot_at(), target, self.g)
+                # De pres, le bas de l'image coupe le cube : on finit sur la
+                # derniere cible connue si la ligne d'arret est a portee.
+                target = self.last_target()
+                if target is None or not docking.may_finish_blind(robot, target, self.g):
+                    raise Failure(RES.FAILED_TO_DETECT_DOCK, 'cube perdu pendant l approche')
+                if blind['since'] is None:
+                    blind['since'] = docking.errors(robot, target)[0]
+                    self.get_logger().info(
+                        f'cube hors champ a {-blind["since"] * 100:.1f} cm de la ligne : fin a l odometrie')
+            v, w, done = docking.approach(robot, target, self.g)
             self.drive(v, w)
             handle.publish_feedback(feedback)
             return done

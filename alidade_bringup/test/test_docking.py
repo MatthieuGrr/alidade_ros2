@@ -96,6 +96,15 @@ def test_cube_trop_pres_le_robot_recule_d_abord():
     assert v < 0.0
 
 
+def test_fin_a_l_aveugle_seulement_pres_de_la_ligne():
+    g = d.Gains(blind=0.04)
+    assert d.may_finish_blind(d.Pose2D(-0.03, 0.0, 0.0), DOCK, g)     # 3 cm : on finit
+    assert d.may_finish_blind(d.Pose2D(0.002, 0.0, 0.0), DOCK, g)     # deja sur la ligne
+    assert not d.may_finish_blind(d.Pose2D(-0.06, 0.0, 0.0), DOCK, g)  # 6 cm : cube perdu = echec
+    # l'ecart lateral ne compte pas : c'est la distance a parcourir qui decide
+    assert d.may_finish_blind(d.Pose2D(-0.03, 0.05, 0.0), DOCK, g)
+
+
 def test_approche_s_arrete_sur_la_ligne_meme_decalee():
     v, w, done = d.approach(d.Pose2D(0.001, 0.03, 0.0), DOCK, d.Gains())
     assert done and v == 0.0 and w == 0.0

@@ -8,12 +8,15 @@
 #                      l'axe de la face, puis approche asservie sur la vision
 #                      jusqu'a la ligne d'arret (alidade_bringup/docking.py)
 #
-# L'ecart est choisi pour que le cube reste dans le champ jusqu'au bout : la
-# camera le perd a moins de ~8 cm de la face avant, et le voit jusqu'a ~42 cm.
+# Arret a 5 cm de la face du cube. De si pres, le bas de l'image coupe le
+# cube : la fin d'approche se fait a l'odometrie sur la derniere cible vue
+# (blind_distance). La camera voit le cube entier de 10 cm a environ 1 m.
 cube_detector:
   ros__parameters:
     use_sim_time: ${use_sim_time}
-    gap: 0.10                     # m, face du cube -> face avant du robot, a l'arret
+    # m, face du cube -> face avant du robot, a l'arret. A 5 cm, seul le dessus
+    # du cube est encore dans l'image (voir blind_distance plus bas).
+    gap: 0.05
     front_x: ${footprint.front_x} # m, base_footprint -> face avant du robot
     hysteresis_deg: 15.0          # changement de face vise : il faut mieux de 15 degres
 
@@ -35,6 +38,11 @@ cube_docking:
     lateral_tolerance: 0.015      # m, arrivee acceptee...
     yaw_tolerance_deg: 5.0        # ... sinon reprise depuis la mise en place
     max_retries: 2
+    # Fin d'approche a l'odometrie quand le cube sort du champ a moins de
+    # cette distance de la ligne d'arret. Mesure sur le robot, camera a 23.5
+    # deg : la face tournee vers le robot disparait entre 11 et 7.5 cm
+    # d'ecart, le dessus entre 5.5 et 4 cm.
+    blind_distance: 0.04          # m
     detection_timeout: 1.0        # s sans detection : cube perdu
     # Age reel d'une detection a sa reception, MESURE par une rotation sur
     # place (debut du mouvement vu par l'odometrie, puis par la camera). On ne
