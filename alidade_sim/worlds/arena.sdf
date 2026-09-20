@@ -90,9 +90,15 @@
       </link>
 
       <!-- Refend interieur : casse la symetrie de la salle, sans quoi le SLAM
-           peine a lever l'ambiguite entre les quatre orientations. -->
+           peine a lever l'ambiguite entre les quatre orientations.
+           DECALE en y : a sa place d'origine (y = 1.2, donc de y = 0 a 2.4) il
+           barrait x = 0.5 a 0.7 juste devant le point d'apparition du robot, et
+           toute pierre posee au-dela de 30 cm se retrouvait dedans ou derriere.
+           Symptome : detection parfaite jusqu'a 30 cm puis plus rien, qu'on
+           prend volontiers pour un defaut de texture. Il degage maintenant
+           l'axe du robot a partir de y = 0.4. -->
       <link name="divider">
-        <pose>0.6 1.2 0.5 0 0 0</pose>
+        <pose>0.6 1.6 0.5 0 0 0</pose>
         <collision name="c"><geometry><box><size>0.2 2.4 1</size></box></geometry></collision>
         <visual name="v"><geometry><box><size>0.2 2.4 1</size></box></geometry>
           <material><ambient>0.45 0.4 0.35 1</ambient><diffuse>0.45 0.4 0.35 1</diffuse></material>

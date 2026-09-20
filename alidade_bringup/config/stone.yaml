@@ -14,6 +14,14 @@
 # faces laterales sont opposees, celle du dessus est horizontale et celle du
 # dessous porte sur le plateau. Rien a fusionner, contrairement au cube : un
 # marqueur vu = une pierre candidate.
+#
+# POSE EN CARRIERE : les pierres y sont COUCHEES, empilees par groupes de
+# trois. Le texte du reglement beta 0.4 (section D.4) dit « 3 pierres
+# disposees verticalement » ; les organisateurs, interroges, ont confirme
+# l'horizontale. C'est ce qui rend ce docking possible : le marqueur d'une
+# pierre debout est centre a 160 mm, hors de l'image d'une camera a 104 mm,
+# et ses 320 mm de haut seraient vus du LiDAR (plan a 153.7 mm), donc arretes
+# a 22 cm par le moniteur de collision.
 name: pierre
 
 # Longueur, largeur, hauteur, en m. Les hauteurs de marqueur s'en deduisent

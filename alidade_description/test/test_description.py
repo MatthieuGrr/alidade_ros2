@@ -101,3 +101,43 @@ def test_check_urdf():
     path = Path(os.environ.get('TMPDIR', '/tmp')) / 'alidade_check.urdf'
     path.write_text(ET.tostring(urdf, encoding='unicode'))
     subprocess.run(['check_urdf', str(path)], check=True, capture_output=True)
+
+
+# --------------------------------------------------------------- revisions
+# v2 est la configuration Coupe de France : elle ne doit differer de v1 QUE par
+# le support de camera. Sans ce controle, une calibration d'odometrie ou une
+# masse reportee dans un seul des deux fichiers passerait inapercue -- c'est le
+# prix a payer pour deux revisions, et il se paie une fois ici.
+V2_DIFFERENCES = {'revision', 'camera.mount_rpy'}
+
+
+def flatten(node, prefix=''):
+    if isinstance(node, dict):
+        for key, value in node.items():
+            yield from flatten(value, f'{prefix}.{key}' if prefix else str(key))
+    else:
+        yield prefix, node
+
+
+def test_v2_ne_differe_de_v1_que_par_le_support_camera():
+    v1 = dict(flatten(REVISION))
+    v2 = dict(flatten(yaml.safe_load((PKG / 'config' / 'alidade_v2.yaml').read_text())))
+    assert set(v1) == set(v2), 'les deux revisions ne decrivent pas les memes cles'
+    differing = {k for k in v1 if v1[k] != v2[k]}
+    # mount_rpy est une liste : flatten la reduit a mount_rpy.0, .1, .2
+    differing = {k.rsplit('.', 1)[0] if k.rsplit('.', 1)[-1].isdigit() else k for k in differing}
+    assert differing == V2_DIFFERENCES, (
+        f'v1 et v2 different sur {sorted(differing)} ; attendu {sorted(V2_DIFFERENCES)}. '
+        'Reporter la mesure dans les deux fichiers, ou mettre a jour V2_DIFFERENCES.')
+
+
+def test_v2_plonge_de_quinze_degres():
+    """L'inclinaison decide de la portee sur les pierres : au-dela de 20.4 deg
+    (demi-ouverture verticale), le marqueur d'une pierre couchee sort du haut
+    de l'image. Voir alidade_bringup/stone.py et le README."""
+    for revision, expected in (('v1', 23.5), ('v2', 15.0)):
+        rot = orientation(run_xacro(target='real', hardware_revision=revision),
+                          REVISION['camera']['frame'])
+        # z du repere optique = axe de visee ; sa composante verticale donne la plongee.
+        plongee = math.degrees(math.asin(-rot[2][2]))
+        assert abs(plongee - expected) < 0.3, f'{revision} : plongee {plongee:.2f} deg'

@@ -1,0 +1,143 @@
+<?xml version="1.0" ?>
+<!--
+  Table de la Coupe de France de robotique / Eurobot 2027.
+
+  CE QUI EST EXACT, parce qu'ecrit dans le reglement : plateau de 3000 x 2000
+  mm ; bordures de 70 mm de haut et 22 mm d'epaisseur sur chaque cote
+  exterieur, grises (RAL 7032, 181/176/161) ; zones de depart de 500 x 500 aux
+  couleurs des equipes (bleu RAL 5017 = 0/91/140, jaune RAL 1023 = 247/181/0) ;
+  tapis vinyle imprime.
+
+  CE QUI EST RELEVE, donc approximatif : la POSITION des zones de depart, lue
+  sur le plan de la version BETA 0.4 (figure 8) a +-30 mm pres. Le plan est un
+  aplat imprime, pas un dessin cote : on y lit une zone a la graduation la plus
+  proche, pas au millimetre. A reprendre des que Planete Sciences publie un
+  plan cote.
+
+  CE QUI MANQUE : les carrieres, remparts, douves et cour. Le reglement renvoie
+  au plan pour leur repartition, et ce plan ne les donne pas sous une forme
+  qu'on puisse relever honnetement. Les pierres se posent donc a la main
+  (stones.py) en attendant.
+
+  Repere : x de 0 a 3000 le long du grand cote, y de 0 a 2000, origine au coin,
+  comme sur le plan du reglement. Le plateau est a z = 0.
+
+  A NOTER, et ce n'est pas un detail : les bordures font 70 mm et le plan du
+  LiDAR d'Alidade est a 153.7 mm. La table est donc INVISIBLE au LiDAR, qui ne
+  verra que les balises fixes, les robots et les pierres debout. slam_toolbox
+  n'a rien a cartographier ici — c'est arena.sdf qui reste le monde des essais
+  de cartographie et de calibration d'odometrie.
+-->
+<sdf version="1.8">
+  <world name="eurobot">
+
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-contact-system" name="gz::sim::systems::Contact"/>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <!-- Une salle de rencontre est eclairee diffusement, par le plafond. Sans
+         ambiante forte, la face d'une pierre tournee vers le robot se retrouve
+         dans sa propre ombre et le marqueur perd tout contraste : le detecteur
+         ne voit plus rien et on accuse la texture. -->
+    <scene>
+      <ambient>0.75 0.75 0.75 1</ambient>
+      <background>0.55 0.6 0.65 1</background>
+      <shadows>true</shadows>
+    </scene>
+
+    <light type="directional" name="salle">
+      <cast_shadows>true</cast_shadows>
+      <pose>1.5 1.0 4 0 0 0</pose>
+      <diffuse>0.6 0.6 0.6 1</diffuse>
+      <specular>0.1 0.1 0.1 1</specular>
+      <direction>-0.2 0.15 -0.97</direction>
+    </light>
+
+    <!-- Le sol de la salle, sous la table : le robot n'y va pas, mais un
+         element qui tombe doit s'arreter quelque part. -->
+    <model name="sol">
+      <static>true</static>
+      <link name="link">
+        <pose>0 0 -0.75 0 0 0</pose>
+        <collision name="c"><geometry><plane><normal>0 0 1</normal><size>50 50</size></plane></geometry></collision>
+        <visual name="v"><geometry><plane><normal>0 0 1</normal><size>50 50</size></plane></geometry>
+          <material><ambient>0.3 0.3 0.32 1</ambient><diffuse>0.3 0.3 0.32 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="table">
+      <static>true</static>
+
+      <!-- Plateau : surface de jeu a z = 0. -->
+      <link name="plateau">
+        <pose>1.5 1.0 -0.011 0 0 0</pose>
+        <collision name="c"><geometry><box><size>3.0 2.0 0.022</size></box></geometry>
+          <surface><friction><ode><mu>0.9</mu><mu2>0.9</mu2></ode></friction></surface>
+        </collision>
+        <visual name="v"><geometry><box><size>3.0 2.0 0.022</size></box></geometry>
+          <material><ambient>0.72 0.72 0.70 1</ambient><diffuse>0.82 0.82 0.80 1</diffuse></material>
+        </visual>
+      </link>
+
+      <!-- Bordures : 70 mm de haut, 22 mm d'epaisseur, POSEES SUR le plateau
+           et debordant vers l'exterieur, gris RAL 7032. -->
+      <link name="bordure_x0">
+        <pose>-0.011 1.0 0.035 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.022 2.044 0.07</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.022 2.044 0.07</size></box></geometry>
+          <material><ambient>0.71 0.69 0.63 1</ambient><diffuse>0.71 0.69 0.63 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="bordure_x3000">
+        <pose>3.011 1.0 0.035 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.022 2.044 0.07</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.022 2.044 0.07</size></box></geometry>
+          <material><ambient>0.71 0.69 0.63 1</ambient><diffuse>0.71 0.69 0.63 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="bordure_y0">
+        <pose>1.5 -0.011 0.035 0 0 0</pose>
+        <collision name="c"><geometry><box><size>3.0 0.022 0.07</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>3.0 0.022 0.07</size></box></geometry>
+          <material><ambient>0.71 0.69 0.63 1</ambient><diffuse>0.71 0.69 0.63 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="bordure_y2000">
+        <pose>1.5 2.011 0.035 0 0 0</pose>
+        <collision name="c"><geometry><box><size>3.0 0.022 0.07</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>3.0 0.022 0.07</size></box></geometry>
+          <material><ambient>0.71 0.69 0.63 1</ambient><diffuse>0.71 0.69 0.63 1</diffuse></material>
+        </visual>
+      </link>
+
+      <!-- Salles du trone : 500 x 500, adossees aux petits cotes. POSITION
+           RELEVEE sur le plan beta a +-30 mm ; les 500 mm, eux, sont ecrits.
+           Plaques de 1 mm, sans collision : elles ne sont la que pour se
+           reperer a l'oeil et poser le robot au bon endroit. -->
+      <link name="depart_bleu">
+        <pose>2.75 1.05 0.0005 0 0 0</pose>
+        <visual name="v"><geometry><box><size>0.5 0.5 0.001</size></box></geometry>
+          <material><ambient>0.0 0.36 0.55 1</ambient><diffuse>0.0 0.36 0.55 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="depart_jaune">
+        <pose>0.25 1.03 0.0005 0 0 0</pose>
+        <visual name="v"><geometry><box><size>0.5 0.5 0.001</size></box></geometry>
+          <material><ambient>0.97 0.71 0.0 1</ambient><diffuse>0.97 0.71 0.0 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+  </world>
+</sdf>

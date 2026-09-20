@@ -439,6 +439,102 @@ rotation (le disque de collision de 4 mm des roues explique le résidu en
 rotation). Le robot doit avoir de l'espace devant lui : contre un mur les
 roues patinent et la mesure ne veut plus rien dire.
 
+### Pierres en simulation
+
+Le modèle de pierre est **engendré**, pas écrit : `make_stone.py` lit
+`config/stone.yaml` et produit texture, maillage UV, matériau et SDF dans
+`alidade_sim/models/stone/`. Regénérer après tout changement de cote ; ne
+jamais éditer les fichiers produits.
+
+```bash
+ros2 run alidade_sim make_stone.py                       # regénère le modèle
+ros2 launch alidade_sim sim.launch.py nav:=true hardware_revision:=v2 headless:=true
+ros2 run alidade_sim stones.py spawn 0.6,0,90            # une pierre couchée
+ros2 run alidade_sim stones.py spawn 0.45,0,90 0.45,0,90,2   # une pile de deux
+ros2 run alidade_sim stones.py clear
+ros2 run alidade_sim dock_sim_campaign.py --repeats 5    # la campagne
+```
+
+Une pierre se décrit partout de la même façon — ici, dans `aruco_bench.py` et
+dans les tests : `x,y,cap[,niveau]`, le cap étant celui du **grand axe** en
+degrés (90 met une grande face face à un robot posé à l'origine) et le niveau
+valant 1 pour celle du bas d'une pile.
+
+**Deux mondes, et ils ne servent pas à la même chose.** `arena.sdf` est une
+salle de 6 × 6 m : c'est le seul où le LiDAR ait de quoi cartographier, donc
+celui du SLAM et de la calibration d'odométrie. `eurobot.sdf` est la table de
+la Coupe — 3000 × 2000, bordures de 70 × 22 mm, couleurs RAL du règlement — et
+ses bordures passent **sous** le plan du LiDAR (153,7 mm) : on y joue, on n'y
+localise pas.
+
+```bash
+ros2 launch alidade_sim sim.launch.py hardware_revision:=v2 \
+    world:=$(ros2 pkg prefix alidade_sim)/share/alidade_sim/worlds/eurobot.sdf \
+    spawn_x:=2.75 spawn_y:=1.05 spawn_yaw:=3.1416      # salle du trône bleue
+```
+
+Ce que la table contient est séparé en deux dans l'en-tête du monde : ce qui
+est **écrit** dans le règlement (plateau, bordures, couleurs, zones de départ
+de 500 × 500) et ce qui est **relevé** sur le plan de la version beta, à ±30 mm
+— la position des zones de départ. Les carrières, remparts et douves n'y sont
+pas : le plan beta ne les donne pas sous une forme qu'on puisse relever
+honnêtement, et inventer des cotes dans ce dépôt serait pire que de les
+laisser vides. Les pierres se posent donc à la main avec `stones.py`.
+
+Trois choix qui ne vont pas de soi :
+
+- **Un maillage, pas un `<box>`.** Une boîte SDF prend bien une texture, mais
+  son UV est celui d'Ogre : rien n'y garantit l'échelle ni le sens sur chaque
+  face, et un marqueur étiré ou **en miroir** ne se décode pas, sans le moindre
+  message. Le maillage porte des UV explicites, posés face par face en
+  regardant chaque face de l'extérieur.
+- **Une texture à 6,4 px/mm** (512 px pour le carré noir) : au plus près, le
+  marqueur couvre 400 px à l'image. On redoutait que les mipmaps d'Ogre2
+  adoucissent le motif de loin ; **la mesure ne le confirme pas** — détection à
+  100 % de 12,5 cm à 80 cm, aux mêmes erreurs que le rendu hors ligne. La
+  crainte était légitime, elle n'était pas fondée à cette résolution.
+  `aruco_bench.py stone` reste l'**étalon** pour la prochaine fois : même
+  scène, mêmes intrinsèques, rendu maîtrisé, et un écart entre les deux
+  désigne le rendu plutôt que l'algorithme.
+- **La détection tourne en nœud séparé** (`aruco:=true`), là où le robot la
+  compose dans le conteneur de la caméra : le pont Gazebo est déjà un processus
+  à part, il n'y a pas d'intra-processus à gagner. Les images transitent en
+  DDS local, en `reliable` — jamais `best_effort`, où la fragmentation d'une
+  image de 900 ko perdrait tout.
+
+`dock_sim_campaign.py` mesure ce que le journal du robot ne dit pas : l'écart
+**réel** entre la face avant et la face de la pierre, lu dans Gazebo, et le
+**déplacement de la pierre**. Une pierre de 90 g poussée de deux centimètres,
+c'est un échec même si l'action rend un succès.
+
+**Campagne du 21 sept. 2026**, révision v2, sept scénarios × trois passes, les
+deux dernières avec un départ perturbé de ±12° :
+
+```
+21 essais : 18 avec une cible acquise, 2 sans, 1 sans vérité terrain
+18/18 dockings dans les tolérances (écart 10 ± 1,5 cm, latéral < 15 mm, cap < 5°)
+écart 10,1 cm en moyenne (extrêmes 9,9 à 10,2), latéral 1,5 mm, cap 1,1°, 15,4 s
+pierre déplacée au plus de 0,0 mm sur 18 essais mesurés
+sans cible : decalee (départ −5,9°), de travers (départ −11,3°)
+```
+
+Trois choses à en retenir :
+
+- **Le bilan sépare ce qui n'est pas comparable.** « Le docking a raté » et
+  « la pierre n'était pas dans le champ au départ » sont deux évènements
+  différents : dans le second cas l'action n'a même pas démarré. Un compteur
+  qui les additionne annonce 17/21 là où la commande fait 18/18, et on cherche
+  un défaut qui n'existe pas.
+- **Les deux pertes de cible sont une vraie limite**, pas un aléa. Demi-ouverture
+  horizontale de 26,4°, et le marqueur doit tenir **entier** dans l'image :
+  une pierre décalée de 10 cm latéralement sort du champ dès que le robot part
+  de quelques degrés de travers. C'est la marge de manœuvre réelle laissée à
+  l'opérateur, et elle est plus étroite que l'ouverture ne le laisse croire.
+- **La pierre ne bouge jamais.** C'est la mesure qui comptait : l'arrêt à 10 cm
+  et la fin d'approche à l'odométrie ne la touchent pas. Le cap résiduel, lui,
+  monte jusqu'à 4,9° sur un scénario décalé — sous la tolérance de 5°, mais
+  c'est là qu'il faudra regarder en premier si elle se resserre.
+
 ## Multi-machines : CycloneDDS avec pairs déclarés
 
 Les deux machines partagent `ROS_DOMAIN_ID` (7) et `rmw_cyclonedds_cpp`, via
@@ -470,10 +566,26 @@ de version dans les noms de paquets, de repères TF ou de topics.
 
 | Révision | Date | Contenu |
 |---|---|---|
-| v1 | 2026-09 | GA25-370 24 V 170 tr/min, réducteur 34:1, encodeurs 11 PPR (1496 counts/tour mesurés), roues Ø 64 mm, entraxe 0.1910 m, RPLIDAR C1, BNO055 en mode IMU, châssis 1.598 kg |
+| v1 | 2026-09 | GA25-370 24 V 170 tr/min, réducteur 34:1, encodeurs 11 PPR (1496 counts/tour mesurés), roues Ø 64 mm, entraxe 0.1910 m, RPLIDAR C1, BNO055 en mode IMU, châssis 1.598 kg, **support caméra à 23,5° mesurés** |
+| v2 | 2026-09 | v1 avec le **support caméra à 15°**, seule configuration où le marqueur d'une pierre couchée reste visible au-delà de 16 cm |
 
 Une révision aux roues différentes est un second YAML, sélectionné par
 `hardware_revision:=v2` ; le build produit un URDF corrigé par révision.
+
+**v2 est la configuration Coupe de France, et son `mount_rpy` est la seule
+valeur *calculée* du dépôt.** L'export Onshape est encore celui du support à
+20° ; +5° autour de x optique ramènent l'axe à 15°, ce qui décrit le support
+visé sans le mesurer. À refaire dès qu'il est monté : réexporter la CAO — la
+position du repère optique bougera de quelques millimètres et
+`frames.expected` le dira — puis le contrôle d'aplomb plus haut. Viser
+**11-12° en CAO** pour atterrir à 15° : les deux supports précédents
+mesuraient 3,2 et 3,5° de plus que leur CAO, un écart commun au châssis et au
+capteur, pas au support.
+
+`test_description.py` vérifie que v1 et v2 ne diffèrent **que** par
+`camera.mount_rpy` : sans ce contrôle, une calibration d'odométrie reportée
+dans un seul des deux fichiers passerait inaperçue. C'est le prix de deux
+révisions, et il se paie une fois.
 
 ### Chaîne de description
 
@@ -574,6 +686,34 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   roues.
 - Un `ros2 topic pub --once` vers `/goal_pose` se perd dans la découverte
   DDS : publier en répété, ou cliquer dans rviz.
+- **Tuer `ros2 launch` ne tue pas ses nœuds.** `pkill -f "ros2 launch alidade_sim"`
+  arrête le lanceur et laisse ses trente enfants vivants. Ils survivent d'un
+  essai au suivant, et les dégâts sont spectaculaires : **deux `ros_gz_bridge`
+  publient deux `/clock` concurrents**, le temps simulé saute en arrière, tf2
+  vide ses tampons en boucle et le docking échoue par « cible perdue » sans
+  qu'aucun de ces messages ne parle d'horloge. Lancer la simulation dans son
+  propre groupe de processus (`setsid`) et la tuer par le groupe
+  (`kill -TERM -$PGID`).
+- **« Failed to find a free participant index for domain 17 »** : même cause,
+  autre symptôme. Chaque nœud DDS prend un index et `cyclonedds.xml` en
+  plafonne la plage à 60 — le prix du multicast coupé. Après quelques cycles
+  d'essais mal nettoyés, plus aucun nœud ne démarre. Compter
+  (`pgrep -af "ros2|gz |python3" | wc -l`) et, dans le conteneur,
+  `docker restart alidade_jazzy` plutôt que de traquer les survivants.
+- La caméra simulée tourne à **~4 Hz** en `headless` sans GPU, au lieu des 15 Hz
+  du pilote : c'est le rendu logiciel d'Ogre2. Le docking s'en accommode
+  (`detection_timeout` est à 1 s), mais toute mesure de latence faite en
+  simulation ne vaut que pour la simulation.
+- **Avant d'accuser le rendu, regarder la scène.** Les pierres étaient détectées
+  parfaitement jusqu'à 30 cm puis plus du tout — exactement la signature qu'on
+  attend d'un filtrage de texture, et j'ai d'abord cherché là. C'était le
+  **refend intérieur** de l'arène : posé en `y = 1.2` avec 2,4 m de long, il
+  courait de `y = 0` à `y = 2.4` en barrant `x = 0.5` à `0.7`, soit un mur à
+  50 cm pile devant le point d'apparition du robot. Toute pierre au-delà de
+  30 cm était posée dedans ou derrière. Il est maintenant en `y = 1.6` et
+  dégage l'axe du robot à partir de `y = 0.4`. Le réflexe utile : enregistrer
+  l'image de la caméra simulée et la **regarder**, avant toute hypothèse sur
+  les mipmaps.
 - Le Pi 5 est livré sans pile RTC : au boot, l'horloge repart de l'heure du
   dernier arrêt et NTP la recale d'un coup quelques secondes plus tard, en
   plein bringup. Les nœuds déjà créés restent vivants mais disparaissent du

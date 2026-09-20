@@ -94,6 +94,13 @@
             <near>0.05</near>
             <far>10.0</far>
           </clip>
+          <!-- Sans bruit, le detecteur ArUco ne rate jamais un marqueur : le
+               taux de detection mesure alors le rendu, pas la chaine. -->
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>${camera['sim_noise_stddev']}</stddev>
+          </noise>
         </camera>
       </sensor>
     </gazebo>
