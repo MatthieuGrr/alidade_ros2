@@ -9,7 +9,7 @@ Chaine des commandes, la meme pour la navigation et le pilotage manuel :
 
     controller_server  --(cmd_vel_nav)--> velocity_smoother
     ou joystick (TELEOP)                  --(cmd_vel_smoothed)--> collision_monitor
-    ou cube_docking (DOCKING)
+    ou docking_server (DOCKING)
                                           --(cmd_vel, Twist)--> cmd_vel_stamper
                                           --(TwistStamped)--> diff_drive_controller
 
@@ -67,9 +67,9 @@ def setup(context):
              name='lifecycle_manager_safety', output='screen',
              parameters=[{'use_sim_time': use_sim_time, 'autostart': True,
                           'node_names': SAFETY}]),
-        # Docking sur le cube : ni carte ni planification, seulement l'odometrie
-        # et la pose du cube. Sans requete (mode DOCKING), il ne publie rien.
-        Node(package='alidade_bringup', executable='cube_docking.py', name='cube_docking',
+        # Docking : ni carte ni planification, seulement l'odometrie et la pose
+        # de la cible. Sans requete (mode DOCKING), il ne publie rien.
+        Node(package='alidade_bringup', executable='docking_server.py', name='docking_server',
              output='screen', parameters=[docking]),
         Node(package='nav2_lifecycle_manager', executable='lifecycle_manager',
              name='lifecycle_manager_navigation', output='screen',

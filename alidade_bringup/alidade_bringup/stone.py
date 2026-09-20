@@ -9,8 +9,9 @@ geometrique, et il se fait dans le repere du robot, ou le plateau est connu :
      des six degres de liberte rendus par le detecteur, quatre sont connus
      d'avance. On ne garde que la position du centre -- mesuree au millimetre
      entre 20 et 50 cm -- et le CAP de la normale. L'ambiguite planaire du
-     marqueur carre, qui faisait basculer l'orientation du cube de +-8 degres,
-     ne peut plus deplacer la cible que dans le plan.
+     marqueur carre ne peut plus deplacer la cible que dans le plan -- elle
+     faisait basculer de +-8 degres le cap du cube de 40 mm qu'Alidade abordait
+     jusqu'ici, faute de cette contrainte.
   2. FILTRES. Un marqueur dont la normale n'est pas horizontale, dont le centre
      n'est pas a la hauteur attendue, trop loin, trop pres, ou vu trop de biais,
      n'est pas la face laterale d'une pierre posee devant nous. Chaque rejet
@@ -255,8 +256,9 @@ def dock_target(tag: Tag, standoff: float) -> DockTarget:
 
     `standoff` : de la FACE de la pierre a base_footprint a l'arret, soit l'ecart
     voulu plus la distance de base_footprint a la face avant du robot. Le centre
-    du marqueur etant sur la face, rien a ajouter pour l'epaisseur : c'est toute
-    la difference avec le cube, dont la pose se rapportait au centre.
+    du marqueur etant SUR la face, rien a ajouter pour l'epaisseur de la pierre :
+    la pose d'arret se deduit du marqueur seul, sans passer par le centre de
+    l'objet.
     """
     normal = np.array([math.cos(tag.yaw), math.sin(tag.yaw)])
     stop = tag.centre[:2] + normal * standoff

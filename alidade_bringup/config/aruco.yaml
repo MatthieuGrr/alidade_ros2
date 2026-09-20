@@ -11,8 +11,8 @@
 # ne fait que chercher des carres noirs et decoder leur damier. Les POSES, en
 # revanche, en dependent entierement. Tant que camera_v1.yaml porte des
 # intrinseques nominales, /aruco_detections et les TF marker_<id> ont un biais
-# d'echelle et ignorent la distorsion : bons pour verifier qu'on voit le cube
-# et a quelle distance, pas pour aller le chercher.
+# d'echelle et ignorent la distorsion : bons pour verifier qu'on voit une
+# pierre et a quelle distance, pas pour aller la chercher.
 aruco_tracker:
   ros__parameters:
     use_sim_time: ${use_sim_time}
@@ -30,14 +30,15 @@ aruco_tracker:
     # coefficients de distorsion annonces par camera_info.
     image_is_rectified: false
 
-    # Cube cible : 50 mm d'arete, une face = un marqueur 4x4 numerote de 1 a 6.
+    # Pierres de la Coupe de France : un marqueur 4x4 unique (id 13) de 80 mm
+    # de cote noir sur chacune des quatre grandes faces, voir config/stone.yaml.
     # marker_size est le cote du CARRE NOIR, bordure blanche exclue : c'est lui
     # qui fixe l'echelle, donc les distances. Les dictionnaires 4X4_50, _100,
     # _250 et _1000 sont emboites (les 50 premiers codes sont identiques) ; le
-    # plus petit suffit pour six identifiants et laisse la plus grande distance
-    # de Hamming entre codes, donc le moins de faux positifs.
+    # plus petit laisse la plus grande distance de Hamming entre codes, donc le
+    # moins de faux positifs, et couvre les identifiants du reglement (1-50).
     marker_dict: 4X4_50
-    marker_size: 0.040
+    marker_size: 0.080
 
     # Poses laissees dans le repere de l'image (camera_optical_frame).
     # Pas de transformation vers base_footprint tant que la calibration n'est
@@ -47,9 +48,10 @@ aruco_tracker:
     publish_tf: true
 
     # Un marqueur plan admet deux solutions PnP symetriques ; on retient celle
-    # qui reprojette le mieux. Le cube n'ayant que des marqueurs isoles pour
-    # l'instant, l'ambiguite reste possible de face -- c'est l'argument pour
-    # fusionner plusieurs faces a l'etape suivante.
+    # qui reprojette le mieux. L'ambiguite subsiste, mais elle ne coute plus
+    # grand-chose : stone.py redresse la pose sur la verticale et ne garde que
+    # le CAP de la normale, quatre des six degres de liberte etant connus
+    # d'avance (face verticale, motif d'aplomb, hauteur imposee).
     pose_selector:
       strategy: REPROJECTION_ERROR
       debug: false
@@ -65,3 +67,16 @@ aruco_tracker:
       cornerRefinementWinSize: 5
       cornerRefinementMaxIterations: 30
       cornerRefinementMinAccuracy: 0.1
+      # DEFAUT 0.05, et a cette valeur le marqueur d'une pierre est INVISIBLE.
+      # Le pave blanc de 100 mm dessine un carre net concentrique au carre noir
+      # de 80 mm : leurs coins sont a 0.177 cote l'un de l'autre, sous le seuil
+      # (0.05 -> 0.2 cote), et le detecteur les prend pour des doublons -- il
+      # garde le pave, qui ne decode rien. Tag alors perdu de 60 a 320 px de
+      # cote, soit toute la plage utile. Mais le seuil sert AUSSI a fusionner
+      # les candidats que les differentes echelles de seuillage rendent du meme
+      # motif, a ~0.04 cote : trop bas, le tag est detecte deux ou trois fois et
+      # fabrique de fausses piles. Bande mesuree sur images rendues : 0.02 a
+      # 0.044 donnent exactement une detection de 13 a 80 cm d'ecart.
+      # Le cube echappait aux deux : sa marge blanche va jusqu'a l'arete et ne
+      # dessine aucun carre net.
+      minMarkerDistanceRate: 0.03

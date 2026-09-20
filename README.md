@@ -108,7 +108,7 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    valeur `camera.focus` avec laquelle elle a été faite.
 
    La mire se génère aux cotes exactes — damier plutôt que ChArUco, dont les
-   marqueurs 4x4 seraient confondus avec les faces du cube :
+   marqueurs 4x4 seraient confondus avec ceux des pierres :
    ```bash
    ./alidade_description/scripts/make_checkerboard.py mire.pdf   # A4 paysage, cases de 25 mm
    ```
@@ -148,57 +148,97 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
 
    **Marqueurs ArUco** (`aruco:=true`, actif par défaut avec la caméra). Le
    détecteur est composé dans le même conteneur que la caméra, donc les
-   images ne sont jamais sérialisées. Cible : un cube de 50 mm portant sur
-   chaque face un marqueur `DICT_4X4_50` de 40 mm (côté du carré noir),
-   numéroté de 1 à 6.
+   images ne sont jamais sérialisées. Cible : une **pierre** de la Coupe de
+   France, boîte carton de 320 × 110 × 110 mm portant sur chacune de ses
+   quatre grandes faces le **même** marqueur `DICT_4X4_50` d'identifiant 13,
+   80 mm de côté noir plus 10 mm de marge blanche (`config/stone.yaml`).
    ```bash
-   ros2 run alidade_bringup aruco_bench.py watch      # identifiants, cadence, distances
-   ros2 run alidade_bringup aruco_bench.py sweep      # portée et justesse, sans robot ni caméra
-   ros2 run alidade_bringup aruco_bench.py cube 0.40 35 20   # rend le cube, vérifie sa géométrie
+   ros2 run alidade_bringup aruco_bench.py watch        # identifiants, cadence, distances
+   ros2 run alidade_bringup aruco_bench.py sweep        # portée et justesse, sans robot ni caméra
+   ros2 run alidade_bringup aruco_bench.py stone        # batterie de scènes : la bonne pierre est-elle choisie ?
+   ros2 run alidade_bringup aruco_bench.py stone-range  # enveloppe de visibilité selon l'inclinaison
    ros2 run rqt_image_view rqt_image_view /aruco_tracker/debug   # marqueurs entourés
    ```
    La **détection** ne dépend pas de la calibration, seulement les **poses** :
    tant que `camera_v1.yaml` est nominal, `/aruco_detections` et les TF
-   `marker_<id>` portent un biais d'échelle. Portée mesurée sur images
-   parfaites : 0,15 à 1,5 m, la limite basse venant du champ de vision et la
-   haute d'un côté apparent tombé à 14 px. Sur un cube posé au sol, la
-   caméra étant fixe, inclinée de 23,5° (mesurés) et son axe optique à
-   10,4 cm du sol, le cube reste entier dans l'image de **10 cm à environ
-   1 m** de la face avant du robot (focale calibrée, fy = 646 px). Plus
-   près, seul le dessus reste visible, jusqu'à 5,5 cm ; en deçà, l'approche
-   finale se fait à l'odométrie.
+   `marker_<id>` portent un biais d'échelle.
+
+   **`minMarkerDistanceRate` décide de tout, et son défaut ne marche pas.**
+   Le pavé blanc de 100 mm dessine un carré net concentrique au carré noir de
+   80 mm : leurs coins sont à 0,177 côté l'un de l'autre, sous le seuil par
+   défaut (0,05 → 0,2 côté), et le détecteur les prend pour des doublons — il
+   garde le pavé, qui ne décode rien. Le marqueur est alors **invisible de 60
+   à 320 px de côté**, soit toute la plage utile. Mais le même seuil fusionne
+   les candidats que les différentes échelles de seuillage rendent du *même*
+   motif, à ~0,04 côté : trop bas, le marqueur est détecté deux ou trois fois
+   et fabrique de fausses piles. Bande mesurée sur images rendues : **0,02 à
+   0,044** donnent exactement une détection de 13 à 80 cm ; `aruco.yaml`
+   retient 0,03. Le cube de 50 mm y échappait, sa marge blanche allant
+   jusqu'à l'arête sans dessiner de carré net.
+
+   **L'inclinaison du support de caméra décide de la portée.** Le rayon haut
+   de l'image passe à `inclinaison − 20,4°` sous l'horizontale (demi-ouverture
+   verticale, fy = 646 px) : au-delà de 20,4°, tout ce qui dépasse la hauteur
+   de l'axe optique (103,9 mm) sort de l'image, quelle que soit la distance.
+   Le marqueur d'une pierre couchée est centré à 55 mm et haut de 80 mm, donc
+   son bord supérieur est à 95 mm — 9 mm sous l'objectif. Mesuré par rendu
+   (`aruco_bench.py stone-range`), écart entre la face avant et la face de la
+   pierre :
+
+   | inclinaison | 10 | 12 | 15 | 20 | 30 | 50 | 70 | 90 cm |
+   |---|---|---|---|---|---|---|---|---|
+   | 23,5° (ancien support) | oui | oui | oui | **non** | non | non | non | non |
+   | 20° | oui | oui | oui | oui | oui | oui | oui | oui |
+   | 15° (support actuel) | non | oui | oui | oui | oui | oui | oui | oui |
+   | 10° | non | non | oui | oui | oui | oui | oui | oui |
+
+   À 23,5°, le marqueur n'est visible qu'entre 9 et 16 cm : trop tard pour
+   une mise en place, le docking est impossible. Le support est donc à **15°**,
+   ce qui donne 12,3 cm de limite proche et plus de limite lointaine utile.
+   Une pierre **debout** (marqueur à 160 mm) ou la **deuxième d'une pile**
+   (165 mm) ne rentrent dans l'image qu'au-delà d'un mètre : hors périmètre,
+   et une pierre debout de 320 mm serait de toute façon vue du LiDAR (plan à
+   153,7 mm) et bloquée à 22 cm par le `collision_monitor`.
+
+   Justesse de la pose, images rendues aux intrinsèques réelles avec bruit :
+
+   | écart | 12,3 cm | 20 cm | 30 cm | 50 cm | 80 cm | 120 cm |
+   |---|---|---|---|---|---|---|
+   | côté apparent | 401 px | 258 px | 174 px | 106 px | 66 px | 45 px |
+   | erreur de position | 4,7 mm | 1,4 mm | 0,8 mm | 0,5 mm | 1,7 mm | 21 mm |
+   | erreur de cap | 0,3° | 0,2° | 0,1° | 1,4° | 5,5° | 6,2° |
+
+   D'où `range_max: 0.90` dans `docking.yaml` : au-delà, le cap ne vaut plus
+   rien. La zone 20–50 cm donne le millimètre et le dixième de degré, et c'est
+   là que la mise en place amène le robot.
 
    **Vérifier que le support de caméra est conforme à la CAO.** L'URDF le
-   suppose incliné comme sa CAO (20°) plus `camera.mount_rpy` et sans dévers, et un écart ne se voit pas à
-   l'image : il se traduit par une erreur de hauteur sur tout ce qu'on
-   détecte. Poser le cube au sol à ~30 cm, au milieu du champ, puis :
+   suppose incliné comme sa CAO plus `camera.mount_rpy` et sans dévers, et un
+   écart ne se voit pas à l'image : il se traduit par une erreur de hauteur
+   sur tout ce qu'on détecte — et, ici, sur la portée. Poser une pierre au sol
+   à ~30 cm, au milieu du champ, puis :
    ```bash
-   ros2 run tf2_ros tf2_echo base_footprint marker_<id>
+   ros2 run tf2_ros tf2_echo base_footprint marker_13
    ```
-   La composante z doit valoir la demi-arête du cube, soit **25 mm**. Mesuré
-   sur le robot : 62 mm avec un support légèrement incliné, 21 mm une fois
-   redressé — et la stabilité de l'orientation passe au même moment d'une
-   amplitude de 20° à 3°. Un millimètre d'erreur à 43 cm vaut 0,13° de
-   dévers, la mesure est donc bien plus sensible que l'œil.
+   La composante z doit valoir **55 mm**, la demi-hauteur de la pierre. Un
+   millimètre d'erreur à 43 cm vaut 0,13° de dévers : la mesure est bien plus
+   sensible que l'œil. Les deux supports précédents mesuraient **3,5° de plus
+   que leur CAO**, deux fois de suite ; si l'écart se reproduit, viser 11-12°
+   en CAO pour atterrir à 15°.
 
-   Ce contrôle suppose la caméra **calibrée** : caméra inclinée, une erreur
-   de focale fausse la profondeur le long de l'axe optique, et l'erreur se
-   reporte sur z (72 mm lus avec la focale nominale). Caméra calibrée, le
-   11 sept. 2026, cube à 30 cm de la face avant : 42,5 mm pour la face
-   tournée vers le robot et 68,9 mm pour le dessus, soit 18 mm de trop sur
-   les deux. Une caméra à 28,2° au lieu des 25° de la CAO explique les deux
-   hauteurs et la distance à la fois ; la correction est dans
-   `camera.mount_rpy` de la révision. Si on ne sait pas d'où vient l'écart,
-   la hauteur mesurée donne directement l'angle à corriger.
+   Ce contrôle suppose la caméra **calibrée** : caméra inclinée, une erreur de
+   focale fausse la profondeur le long de l'axe optique, et l'erreur se reporte
+   sur z. Si on ne sait pas d'où vient l'écart, la hauteur mesurée donne
+   directement l'angle à corriger, et la correction va dans `camera.mount_rpy`
+   de la révision.
 
-   La géométrie du cube est dans `alidade_bringup/config/cube.yaml`, décrite
-   face par face (normale sortante et direction du haut du motif) plutôt que
-   par des matrices, pour se relire sur le cube posé devant soi ;
-   `test_cube.py` vérifie que chaque face définit bien un repère orthonormé
-   direct et que les six forment un cube. Précision de la pose du cube sur
-   images parfaites, par PnP conjoint sur toutes les faces vues : 2 mm à
-   0,40 m, 15 mm à 0,70 m, 44 mm à 1,00 m. Pour saisir un cube de 50 mm, il
-   faut donc s'en approcher à 40 cm ou moins avant de conclure à l'odométrie.
+   La géométrie de la pierre est dans `alidade_bringup/config/stone.yaml` ;
+   les hauteurs de marqueur (55, 165, 275 mm couchée, 160 mm debout) s'en
+   déduisent dans `stone.py` plutôt que d'y être recopiées. Le choix de la
+   cible parmi tous les marqueurs vus est testé sans ROS (`test_stone.py`,
+   17 cas) puis sur images rendues (`aruco_bench.py stone`, 14 scènes :
+   pierre seule de 12 à 80 cm, de travers, piles de 2 et 3, pierres voisines,
+   marqueur parasite près et loin).
    Puis un mètre au sol :
    ```bash
    ros2 topic pub -r 20 /diff_drive_controller/cmd_vel geometry_msgs/msg/TwistStamped \
@@ -262,7 +302,7 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    pousse ses buts nav2, publie `/exploration_complete` quand il n'y a plus
    de frontière et rentre au point de départ ; le gestionnaire sauvegarde
    alors la carte sous `exploration_<date>` et repasse en `MAPPING`) et
-   `DOCKING` 5 (approche du cube, voir plus bas). `TELEOP` et `DOCKING`
+   `DOCKING` 5 (approche d'une pierre, voir plus bas). `TELEOP` et `DOCKING`
    **préservent** la source de localisation en cours : conduire à la main au milieu d'une cartographie puis y revenir
    reprend la même carte, et l'exploration repart où elle en était. Une seule
    source de `map → odom` à la fois, et nav2 ne tourne que quand ce repère
@@ -281,53 +321,75 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    (mode et sous-état, boutons de mode, choix et sauvegarde de carte,
    localisation, nav2, capteurs, santé, et en DOCKING le bouton Dégager),
    carte, scan, TF, pose initiale, but, joystick sur `/cmd_vel_nav`,
-   caméra, cube détecté (`/cube/markers`), diagnostics. Le widget
+   caméra, pierres détectées (`/stone/markers`), diagnostics. Le widget
    Alidade vit dans `alidade_ui/templates/alidade/` ; `sources.sh` le lie
    dans le dossier `public` de Vizanti, seul endroit où le serveur cherche
    ses templates.
 
-   **Docking sur le cube** (`DOCKING` 5) : amener le robot à portée, cube
-   dans le champ et à **moins de 45 cm** (plus loin, seulement vu en coin,
-   deux faces nettes : une face seule y a une orientation douteuse) ; puis le
-   bouton DOCKING du widget Alidade (ou `set_mode` 5). Refusé si le cube
-   n'est pas vu. Le robot s'arrête à **5 cm** de la face du cube la plus
-   tournée vers lui, dans son axe ; « Dégager » le fait reculer de 15 cm,
-   et redemander DOCKING relance une approche. Deux nœuds :
-   - `cube_detector.py` : pose du cube depuis les faces vues, et pose
-     d'arrêt de `base_footprint` devant la face visée (`/cube/dock_pose`,
-     `/cube/center`, marqueurs `/cube/markers` pour Vizanti : cube orange,
-     rouge si ses faces se contredisent, flèche verte à la pose d'arrêt) ;
-   - `cube_docking.py` : actions `/dock_robot` et `/undock_robot` (types
+   **Docking sur une pierre** (`DOCKING` 5) : amener le robot à portée, une
+   grande face de la pierre dans le champ, entre **12 et 80 cm** de la face
+   avant et vue de moins de 70° de biais ; puis le bouton DOCKING du widget
+   Alidade (ou `set_mode` 5). Refusé si aucune pierre n'est retenue. Le robot
+   s'arrête à **10 cm** de la face, dans son axe — la pierre pèse 90 g, un
+   contact la déplacerait, et il n'y a pas encore de pince. « Dégager » le
+   fait reculer de 15 cm, et redemander DOCKING relance une approche. Deux
+   nœuds :
+   - `stone_detector.py` : choisit la pierre à aborder parmi **tous** les
+     marqueurs vus — ils portent le même identifiant, le tri est entièrement
+     géométrique (`alidade_bringup/stone.py`) — et publie la pose d'arrêt de
+     `base_footprint` devant sa face (`/stone/dock_pose`, `/stone/center`,
+     marqueurs `/stone/markers` pour Vizanti : cible en vert, candidat non
+     retenu en orange, rejeté en rouge **avec le motif** — `hauteur`,
+     `inclinaison`, `distance`, `incidence`, `empilee`, `identifiant`) ;
+   - `docking_server.py` : actions `/dock_robot` et `/undock_robot` (types
      `nav2_msgs`). Mise en place à l'odométrie dans l'axe de la face, 20 cm
      en retrait, si le robot en est trop loin ; puis approche asservie sur la
-     vision jusqu'à la **ligne** d'arrêt, les 4 derniers centimètres à
-     l'odométrie si le cube sort du champ ; contrôle de l'arrivée, reprise si
-     hors tolérance (1,5 cm, 5°).
+     vision jusqu'à la **ligne** d'arrêt, les derniers centimètres à
+     l'odométrie si la pierre sort du champ ; contrôle de l'arrivée, reprise
+     si hors tolérance (1,5 cm, 5°). Ce nœud ne sait rien de ce qu'il aborde :
+     il reçoit un centre et une pose d'arrêt, et il y va.
+
+   Le tri géométrique, en quatre temps (`stone.py`) :
+   1. **redressement** — la face est verticale, le motif d'aplomb, la hauteur
+      imposée : quatre des six degrés de liberté rendus par le détecteur sont
+      connus d'avance. On ne garde que la position du centre et le cap de la
+      normale, et l'ambiguïté planaire du marqueur carré ne peut plus déplacer
+      la cible que dans le plan ;
+   2. **filtres** — inclinaison de la normale, hauteur du centre, distance,
+      incidence, identifiant. Chaque rejet garde son motif, sinon un réglage
+      de seuil se débogue à l'aveugle ;
+   3. **piles** — deux marqueurs dont les centres se superposent en projection
+      sur le plateau appartiennent à la même pile : seul le plus bas est gardé.
+      La fenêtre de hauteur rejette déjà une pierre debout (160 mm) comme la
+      deuxième d'une pile couchée (165 mm) — 5 mm les séparent, aucune fenêtre
+      ne les distingue, et les deux sont hors périmètre ;
+   4. **verrouillage** — la cible choisie est gardée tant qu'elle réapparaît
+      au même endroit, sinon deux pierres à égalité se la disputeraient d'une
+      image à l'autre en pleine approche.
 
    Réglages dans `alidade_bringup/config/docking.yaml`, logique testée sans
-   ROS dans `alidade_bringup/docking.py` et `cube.py`. **Campagnes du 13 sept.
-   2026** (caméra à 23,5°, arrêt visé à 5 cm), l'écart réel étant mesuré en
-   reculant d'une distance connue jusqu'à 30 cm, où la caméra est juste — de
-   très près elle ne voit plus que le dessus, flou, au bord de l'image :
-   - départs à ~30 cm, ±10° : 7 essais sur 7 réussis, 6 du premier coup,
-     4 à 6 s, latéral 0 à 5 mm, cap 0,3 à 2,8° ;
-   - écart réel **5,1 / 5,1 / 4,9 cm** avec `detection_latency: 0.15` (6,0 cm
-     à 0,35 s, 4,2 cm à 0 s : 5 mm d'écart par 0,1 s, c'est une constante
-     calibrée) ;
-   - départ en coin à 95 cm : réussi, mais après deux reprises (la mise en
-     place est depuis refaite quand la cible change) ; à 60 cm avec une face
-     très oblique, pose trop rare, docking refusé : c'est la limite de
-     marqueurs de 40 mm à cette distance.
+   ROS dans `alidade_bringup/docking.py` et `stone.py`.
+
+   > **Campagne réelle à refaire.** Les chiffres de docking du dépôt (7 essais
+   > sur 7, écart réel 5,1 / 5,1 / 4,9 cm, `detection_latency: 0.15`) ont été
+   > mesurés le 13 sept. 2026 sur le **cube de 50 mm**, caméra à 23,5°, arrêt
+   > visé à 5 cm. La cible, l'inclinaison et la distance d'arrêt ont toutes
+   > changé : `detection_latency` est à recalibrer sur les pierres. La méthode,
+   > elle, reste la bonne — mesurer l'écart réel en reculant d'une distance
+   > connue jusqu'à 30 cm, où la caméra est juste, le marqueur sortant du champ
+   > à 12,3 cm pour un arrêt visé à 10 cm :
+   > `ros2 run alidade_bringup dock_campaign.py n:0.15,n:0.15,n:0.15`.
+   > À 5 cm/s de fin d'approche, chaque 0,1 s de latence déplace l'arrêt de
+   > 5 mm ; c'est une constante, pas une mesure de temps.
+
    Le cap résiduel d'environ 2,5° à l'arrivée est voulu : la loi garde un
    léger cap pour rattraper les derniers millimètres latéraux, trop petits
    pour la zone morte des moteurs.
 
-   Pour revalider après un réglage :
-   `ros2 run alidade_bringup dock_campaign.py n:0.15,n:0.15,n:0.15`.
-
-   Sans robot, `aruco_bench.py fake-cube <x> <y> <cap>` publie en simulation
-   les détections d'un cube posé dans `odom`, avec la latence mesurée sur le
-   robot : toute la chaîne se rejoue dans Gazebo.
+   Sans robot, `aruco_bench.py fake-stones <x>,<y>,<cap>[,<niveau>] ...` publie
+   en simulation les détections de pierres posées dans `odom`, avec la latence
+   mesurée sur le robot : toute la chaîne se rejoue dans Gazebo, piles et
+   pierres voisines comprises.
 
 5. **Au boot** : `sudo systemctl enable --now alidade`. Les arguments du
    launch se règlent dans `/etc/default/alidade`. Journaux :
@@ -498,7 +560,15 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   tente de reconfigurer des nœuds déjà configurés (« Unable to start
   transition 1 from current state inactive »).
 - nav2 est lancé à la main (six nœuds), pas via `navigation_launch.py` dont
-  le `docking_server` et le `waypoint_follower` font tomber tout le bringup.
+  le `docking_server` (celui d'`opennav_docking`) et le `waypoint_follower`
+  font tomber tout le bringup. **Homonymie voulue** : notre nœud s'appelle lui
+  aussi `docking_server` et sert les mêmes actions `/dock_robot` et
+  `/undock_robot`, pour qu'un client n'ait pas à savoir qui répond. Les deux ne
+  tournent jamais ensemble, `navigation_launch.py` n'étant pas inclus. La loi
+  de commande, elle, est la nôtre : celle de nav2 (graceful controller), sans
+  pivot sur place et visant 25 cm au-delà du point d'arrêt, ne rattrape pas un
+  départ de travers sur 10 à 30 cm — rejouée hors ligne, elle arrivait à 2 cm
+  du point mais jusqu'à 27° de travers.
 - Les spawners ont `--switch-timeout 60` : sinon un controller_manager lent
   laisse `joint_state_broadcaster` inactif, sans `/joint_states` ni TF des
   roues.
@@ -617,29 +687,29 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   la caméra) : environ 300 ms. Tout ce qui recale une détection sur le
   mouvement du robot doit donc partir de l'heure de réception moins la
   latence mesurée (`detection_latency`), jamais de l'horodatage de l'image.
-- Le cap d'une face de cube vue seule **bascule de ±8°** d'une image à
-  l'autre, alors que son centre est stable à 1-2 mm. Une pose d'arrêt à
-  25 cm du centre change ces 8° en 3 cm latéraux : le docking lisse donc le
-  centre et le cap séparément (`docking.TargetFilter`), avec un seuil
-  d'aberration large, car ce bruit est bimodal.
-- La pose d'un marqueur plan **seul** est ambiguë : deux solutions PnP
-  presque équivalentes, entre lesquelles le détecteur bascule d'une image à
-  l'autre. Mesuré sur le cube immobile à 43 cm : distance stable à ±1,3 mm,
-  mais orientation oscillant sur 3° (et sur 20° quand le support de caméra
-  était de travers). La position d'un marqueur isolé est donc exploitable,
-  son orientation non — c'est l'argument pour combiner plusieurs faces.
-  **De loin, c'est pire, et `aruco_opencv` choisit le plus souvent la mauvaise
-  solution** : cube vu en coin à 70 cm–1 m, marqueurs de 20 px, orientation
-  fausse sur 80 % des images, avec des bascules de 60°. Les faces se
-  contredisaient, et la face visée par le docking changeait sans cesse.
-  Leurs **positions**, elles, restent justes au millimètre. D'où
-  `cube.estimate_on_floor`, dans le repère du robot où le sol est connu :
-  deux faces verticales voisines donnent le cap par le segment qui joint leurs
-  centres ; une face et le dessus, par la direction du dessus vers la face ;
-  une face seule n'est crue qu'à moins de 45 cm. Le dessus se reconnaît à la
-  hauteur de son marqueur, pas à son orientation. Mesuré sur la même scène :
-  cap de la pose d'arrêt passé de −52°/+52° (bascules) à une dispersion de
-  8,6° sur une seule face, hystérésis de face portée à 30°.
+- Le cap d'une face vue seule est **bien moins sûr que son centre**. Sur le
+  cube de 50 mm il basculait de ±8° d'une image à l'autre, centre stable à
+  1-2 mm. Une pose d'arrêt à 20-25 cm du centre change quelques degrés de cap
+  en centimètres latéraux : le docking lisse donc le centre et le cap
+  séparément (`docking.TargetFilter`), avec un seuil d'aberration large, car
+  ce bruit est bimodal.
+- La pose d'un marqueur plan **seul** est ambiguë : deux solutions PnP presque
+  équivalentes, entre lesquelles le détecteur bascule d'une image à l'autre.
+  Mesuré sur le cube immobile à 43 cm : distance stable à ±1,3 mm, orientation
+  oscillant sur 3° (et sur 20° quand le support de caméra était de travers) ;
+  de loin, orientation fausse sur 80 % des images, avec des bascules de 60°.
+  La **position** d'un marqueur isolé est exploitable, son orientation non.
+  Deux parades, dans l'ordre : contraindre, sinon combiner.
+  - Contraindre, ce que fait `stone.upright` : une face de pierre est
+    verticale, son motif d'aplomb, sa hauteur imposée. Quatre des six degrés
+    de liberté sont donc connus d'avance, on ne garde que le centre et le cap
+    de la normale, et l'ambiguïté ne peut plus déplacer la cible que dans le
+    plan. C'est la bonne parade quand la géométrie de la scène est connue.
+  - Combiner plusieurs faces, ce qu'exigeait le cube : six marqueurs sur six
+    plans, dont on tirait le cap par les **positions** relatives plutôt que
+    par les orientations. Impossible sur une pierre couchée, qui ne montre
+    qu'une face à la fois — les deux faces latérales sont opposées, celle du
+    dessus est plus haute que l'objectif.
 - La détection est très sensible au **contre-jour**. Face à une baie vitrée,
   l'exposition automatique se règle sur la fenêtre et sous-expose la pièce :
   taux de détection tombé à 23 % puis à zéro quand le soleil a tourné, contre
@@ -648,65 +718,25 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   (3,8 %). Déplacer le robot vaut mieux que régler la caméra.
 - `aruco_opencv` ne sait décrire que des **damiers plans** (`GridBoard` :
   `markers_x`, `markers_y`, `separation`), et son message `MarkerPose` ne
-  porte qu'un identifiant et une pose, pas les coins détectés. Un cube, dont
-  les six marqueurs sont sur six plans, n'est donc pas descriptible : la pose
-  du cube devra venir de notre code, en combinant les faces visibles.
+  porte qu'un identifiant et une pose, pas les coins détectés. Un objet dont
+  les marqueurs sont sur plusieurs plans n'est donc pas descriptible, et un
+  PnP contraint (3 DDL au lieu de 6) est hors d'atteinte faute de coins : ce
+  qu'on peut faire, on le fait sur les poses, en aval.
+- `aruco_opencv` publie bien **plusieurs détections de même identifiant** dans
+  un seul message : vérifié en direct sur 1074 images de deux pierres, contenu
+  `[13, 13]`. Toute la désambiguïsation géométrique en dépend.
 - Un marqueur ArUco a besoin d'une **marge blanche** d'au moins un module
   autour de lui. Trop mince sur un fond contrasté, cette marge forme son
   propre contour et le détecteur s'y accroche au lieu du carré noir — le
   marqueur devient alors invisible **de près** et détecté de loin, ce qui est
-  contre-intuitif et coûte cher à diagnostiquer.
-- Le détecteur ne raffine pas les coins par défaut
-  (`cornerRefinementMethod: NONE`). Sur un marqueur de 40 mm vu à 1 m,
-  soit 21 px de côté, un pixel d'erreur fait 6 % de distance. Mesuré de 0,2 à
-  1,5 m : erreur maximale 6,0 % au pixel contre 2,1 % en sous-pixellique,
-  moyenne 2,3 % contre 0,9 %. D'où `cornerRefinementMethod: 1` dans
-  `aruco.yaml`.
-- Le Pico compte les ticks depuis **son** démarrage, pas depuis celui de ROS.
-  Sans origine prise à l'activation, les positions de roue valaient plus de
-  1500 rad dès la première lecture et `diff_drive_controller` démarrait son
-  odométrie à plusieurs mètres et dizaines de degrés de l'origine.
-  `PicoSystem::on_activate` mémorise donc les compteurs comme référence.
-- `amcl` **garde son filtre** d'une désactivation à l'autre et republie
-  aussitôt la pose de la session précédente, éventuellement issue d'une autre
-  carte. Le gestionnaire le croyait localisé et lançait la planification
-  dessus : il le redémarre donc complètement (nettoyage, configuration,
-  activation) à chaque entrée en `LOCALIZATION`.
-- nav2 rejette toute pose dont le quaternion s'écarte de la norme 1 de plus
-  de 1e-4 (« Received initialpose message is malformed »). Un quaternion
-  saisi à la main avec trois décimales suffit à se faire jeter : le calculer,
-  ne pas l'arrondir.
-- Une carte ne se construit qu'en **roulant**. Un LiDAR 360° qui tourne sur
-  place ne découvre rien, et la carte reste identique — ce n'est pas une
-  panne. Mesuré : 912 cellules connues à l'arrêt, 8363 après 1,6 m de
-  trajet. Une carte trop pauvre ne permet pas à AMCL de converger ;
-  au-dessus de ~400 cellules de mur, l'écart-type tombe à 6 cm en un mètre.
-- Le moniteur de collision utilise un polygone **`approach`** et non `stop` :
-  il projette l'empreinte le long de la commande reçue et ne freine que si
-  *cette* trajectoire touche quelque chose. Avec un `stop` circulaire, toute
-  commande était coupée dès qu'un point entrait dans le rayon, quel que soit
-  son sens — collé à une vitre que le LiDAR voit mal, le robot ne pouvait même
-  plus reculer. Vérifié : bloqué en avant à 0,005 m/s, dégagement arrière à
-  0,152 m/s. Une vitre reste invisible au LiDAR ; pour l'interdire vraiment il
-  faut un masque `keepout` (filtre de costmap nav2), pas encore en place.
-- Les seuils de diagnostic de `ros2_control` visent une boucle temps réel. Ici
-  elle est cadencée par les trames USB du Pico : les moyennes sont excellentes
-  (20 à 83 µs d'exécution pour 20 ms de cycle, périodicité 50,06 Hz ± 1,99),
-  mais de rares pics de 6 ms au démarrage gonflent définitivement des
-  statistiques cumulées. Seuls les écarts-types sont élargis dans
-  `controllers.yaml`, jamais ceux des moyennes.
-- Gazebo : `empty.sdf` n'embarque ni `gz-sim-sensors-system` ni
-  `gz-sim-imu-system` ; `arena.sdf` les déclare. Les roues ont un disque de
-  collision de 4 mm, pas la largeur réelle du pneu, sinon l'entraxe
-  efficace tombe de 13.8 %.
-
-## Tests
-
-```bash
-colcon test && colcon test-result --verbose
-```
-
-`alidade_description` : xacro des trois cibles, `check_urdf`, absence de
-noms partagés link/joint, constantes issues de la révision.
-`alidade_bringup` : rendu de tous les gabarits. `alidade_hardware` : gtest du
-protocole depuis le vecteur de checksum documenté et les formes invalides.
+  contre-intuitif et coûte cher à diagnostiquer. Trop *nette*, elle crée un
+  second carré concentrique que `minMarkerDistanceRate` confond avec le vrai :
+  voir plus haut, c'est le cas des pierres et il n'a pas de solution côté
+  cible, seulement côté réglage.
+- **Un rendu qui replie vaut un algorithme faux.** En fabriquant les images
+  d'essai, `warpPerspective` réduisait une texture de 1638 px à une centaine :
+  le motif se repliait et le marqueur devenait indécodable de 15 à 80 cm,
+  exactement comme une limite de portée. D'où le suréchantillonnage ×4 de
+  `aruco_bench.py stone`. Les mipmaps d'Ogre2 font le même genre de tort en
+  simulation : le rendu OpenCV, aux intrinsèques réelles, sert d'étalon pour
+  trancher entre un défaut de texture et un défaut d'algorithme.

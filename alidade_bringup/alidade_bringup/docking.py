@@ -1,4 +1,4 @@
-"""Commande du docking sur le cube, sans ROS.
+"""Commande du docking sur une cible vue, sans ROS.
 
 Deux temps, tous deux exprimes dans le repere odom :
 
@@ -9,14 +9,17 @@ Deux temps, tous deux exprimes dans le repere odom :
   2. APPROCHE, asservie sur la vision : le robot suit l'axe de la face,
      corrige son ecart lateral, et s'arrete en atteignant la LIGNE d'arret.
      Pas un rayon autour d'un point : il ne peut pas la depasser en cherchant
-     a l'atteindre, et le cube, qu'on perd a moins de 8 cm, reste dans le champ.
+     a l'atteindre, et la cible, qu'on perd de tres pres, reste dans le champ.
 
 Pourquoi pas la loi du serveur de docking de nav2 (graceful controller) :
 sans pivot sur place, et visant 25 cm au-dela de la pose d'arret, elle ne
 rattrape pas un depart de travers sur 10 a 30 cm. Rejouee hors ligne sur des
 departs a +-25 degres et +-5 cm, elle arrivait bien a 2 cm du point, mais
 jusqu'a 27 degres de travers ; en simulation, le robot passait a cote du
-point, continuait et perdait le cube.
+point, continuait et perdait la cible.
+
+Rien ici ne sait ce qu'on aborde : une pose d'arret, un centre, une odometrie.
+Reconnaitre la cible est le travail du detecteur.
 """
 from __future__ import annotations
 
@@ -62,20 +65,21 @@ class Gains:
     lat_tol: float = 0.015       # m, arrivee acceptee
     arrive_yaw_tol: float = math.radians(5.0)
     # Mise en place inutile en deca de ces ecarts : l'approche les rattrape,
-    # alors qu'un pivot-recul-pivot fait perdre le cube de vue.
+    # alors qu'un pivot-recul-pivot fait perdre la cible de vue.
     # Seuils verifies en simulation (zone morte comprise) : 150 departs a 8-25
     # cm, 0 echec ; a 10 cm de course et 2 cm d'ecart, l'approche seule
     # arrivait de travers (6.6 degres).
     skip_lat: float = 0.025      # m, ...
     skip_yaw: float = math.radians(10.0)  # ... et de ce cap...
     skip_min_run: float = 0.12   # m, ... s'il reste au moins cette course
-    # Fin d'approche a l'aveugle : a moins de `blind` de la ligne d'arret, un
-    # cube perdu de vue n'arrete pas l'approche, qui se termine a l'odometrie
-    # sur la derniere cible connue. De pres, le bas de l'image coupe le cube :
-    # mesure sur le robot (camera a 23.5 deg), la face tournee vers le robot
-    # disparait entre 11 et 7.5 cm d'ecart, le dessus entre 5.5 et 4 cm. Le
-    # cube est immobile et le cap vient du gyromètre : quelques centimetres a
-    # l'odometrie ne coutent rien.
+    # Fin d'approche a l'aveugle : a moins de `blind` de la ligne d'arret, une
+    # cible perdue de vue n'arrete pas l'approche, qui se termine a l'odometrie
+    # sur sa derniere pose connue. De pres, c'est le HAUT de l'image qui coupe
+    # la cible, la camera etant inclinee vers le sol : le marqueur d'une pierre
+    # couchee sort du champ a 12.3 cm de la face avant, pour un arret vise a
+    # 10 cm. La pierre est immobile et le cap vient du gyromètre : quelques
+    # centimetres a l'odometrie ne coutent rien -- mais la toucher la
+    # deplacerait, elle ne pese que 90 g.
     blind: float = 0.04          # m
 
 
@@ -93,7 +97,7 @@ def staging_needed(robot: Pose2D, dock: Pose2D, g: Gains) -> bool:
 
 
 def may_finish_blind(robot: Pose2D, dock: Pose2D, g: Gains) -> bool:
-    """Vrai si le robot est assez pres de la ligne d'arret pour finir sans voir le cube."""
+    """Vrai si le robot est assez pres de la ligne d'arret pour finir sans voir la cible."""
     along, _, _ = errors(robot, dock)
     return along >= -g.blind
 
@@ -125,7 +129,7 @@ class Stager:
                 self.phase = 'align'
             else:
                 bearing = math.atan2(dy, dx)
-                # Reculer plutot que faire demi-tour : le cube reste devant.
+                # Reculer plutot que faire demi-tour : la cible reste devant.
                 self.backward = abs(wrap(bearing - robot.yaw)) > math.pi / 2
                 heading = wrap(bearing + math.pi) if self.backward else bearing
                 err = wrap(heading - robot.yaw)
@@ -162,25 +166,26 @@ def approach(robot: Pose2D, dock: Pose2D, g: Gains) -> tuple[float, float, bool]
 
 
 class TargetFilter:
-    """Pose d'arret lissee dans odom, a partir du centre du cube et du cap de
-    la face visee.
+    """Pose d'arret lissee dans odom, a partir du centre de la cible et du cap
+    de la face visee.
 
-    Le centre du cube est mesure a 1-2 mm pres ; le cap de sa face, lui,
-    bascule de +-8 degres d'une image a l'autre (ambiguite d'un marqueur plan).
-    Or la pose d'arret est a ~25 cm du centre, et ce bras de levier change
-    8 degres de cap en 3 cm de deplacement lateral de la cible : lisser la pose
-    d'arret en bloc laisse passer ce bruit. On lisse donc le centre vite, le
-    cap lentement en ecartant les aberrations, et on reconstruit la pose
-    d'arret : centre - bras * (cos cap, sin cap).
+    Le centre est mesure bien plus finement que le cap : lisser la pose d'arret
+    en bloc laisserait passer le bruit du second. Car la pose d'arret est a
+    ~20 cm du centre, et ce bras de levier change quelques degres de cap en
+    centimetres de deplacement lateral. On lisse donc le centre vite, le cap
+    lentement en ecartant les aberrations, et on reconstruit la pose d'arret :
+    centre - bras * (cos cap, sin cap).
 
     Un vrai changement de face visee (un quart de tour) passe pour une
     aberration ; il est accepte s'il persiste `switch_count` images.
     """
 
-    # Seuil d'aberration large : le bruit reel est BIMODAL (+-8 degres, le
-    # detecteur bascule entre deux solutions), et un seuil a 15 degres calait
-    # le filtre sur l'un des modes en rejetant l'autre. Un changement de face
-    # fait 90 degres : 30 separe encore bien les deux.
+    # Seuil d'aberration large, herite du cube de 40 mm dont le bruit de cap
+    # etait BIMODAL (+-8 degres, le detecteur basculait entre les deux solutions
+    # d'un marqueur plan) : un seuil a 15 degres calait le filtre sur l'un des
+    # modes en rejetant l'autre. Un changement de face fait 90 degres, et 30 les
+    # separe encore. Le marqueur de 80 mm d'une pierre, redresse, est bien plus
+    # stable : a resserrer apres la campagne d'essais.
     def __init__(self, k_pos: float = 0.3, k_yaw: float = 0.1,
                  outlier: float = math.radians(30.0), switch_count: int = 5):
         self.k_pos, self.k_yaw, self.outlier, self.switch_count = k_pos, k_yaw, outlier, switch_count

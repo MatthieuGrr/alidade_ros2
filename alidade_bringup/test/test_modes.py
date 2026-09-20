@@ -77,17 +77,17 @@ def test_unknown_mode_is_refused():
         m.plan(m.Context(current=m.IDLE), 42)
 
 
-def test_docking_needs_the_cube_in_view():
-    with pytest.raises(m.Refused, match='pas de pose sure'):
+def test_docking_needs_a_stone_in_view():
+    with pytest.raises(m.Refused, match='aucune pierre retenue'):
         m.plan(m.Context(current=m.IDLE), m.DOCKING)
-    p = m.plan(m.Context(current=m.IDLE, cube_visible=True), m.DOCKING)
+    p = m.plan(m.Context(current=m.IDLE, stone_visible=True), m.DOCKING)
     assert steps(p) == [('nav', 'cancel'), ('dock', 'start')]
 
 
 def test_docking_preserves_localization():
-    """S'approcher du cube ne suit que l'odometrie : la carte ou la
+    """S'approcher d'une pierre ne suit que l'odometrie : la carte ou la
     localisation en cours survit, comme en TELEOP."""
-    ctx = m.Context(current=m.LOCALIZATION, maps=['a'], current_map='a', amcl_active=True, cube_visible=True)
+    ctx = m.Context(current=m.LOCALIZATION, maps=['a'], current_map='a', amcl_active=True, stone_visible=True)
     assert steps(m.plan(ctx, m.DOCKING)) == [('nav', 'cancel'), ('dock', 'start')]
     back = m.Context(current=m.DOCKING, maps=['a'], current_map='a', amcl_active=True)
     assert steps(m.plan(back, m.LOCALIZATION, 'a')) == [('dock', 'cancel'), ('nav', 'cancel')]
@@ -96,11 +96,11 @@ def test_docking_preserves_localization():
 
 
 def test_docking_again_restarts_the_approach_only_when_stopped():
-    stopped = m.Context(current=m.DOCKING, cube_visible=True)
+    stopped = m.Context(current=m.DOCKING, stone_visible=True)
     assert steps(m.plan(stopped, m.DOCKING)) == [('dock', 'start')]
-    running = m.Context(current=m.DOCKING, cube_visible=True, docking_active=True)
+    running = m.Context(current=m.DOCKING, stone_visible=True, docking_active=True)
     assert m.plan(running, m.DOCKING).steps == []
-    with pytest.raises(m.Refused, match='pas de pose sure'):
+    with pytest.raises(m.Refused, match='aucune pierre retenue'):
         m.plan(m.Context(current=m.DOCKING), m.DOCKING)
 
 

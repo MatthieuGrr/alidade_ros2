@@ -1,7 +1,7 @@
 """Commande du docking (alidade_bringup/docking.py) sur un robot cinematique.
 
 On rejoue mise en place puis approche depuis une grille de departs realistes
--- ceux ou l'operateur laisse le robot, cube dans le champ -- et on verifie
+-- ceux ou l'operateur laisse le robot, cible dans le champ -- et on verifie
 l'arrivee : sur la ligne d'arret, dans l'axe, bien oriente, sans l'avoir
 jamais depassee.
 """
@@ -82,7 +82,7 @@ def test_deja_en_place_on_saute_la_mise_en_place():
     assert d.staging_needed(d.Pose2D(-0.05, 0.0, 0.0), DOCK, g)             # trop pres
 
 
-def test_cube_trop_pres_le_robot_recule_d_abord():
+def test_cible_trop_pres_le_robot_recule_d_abord():
     g = d.Gains()
     stager = d.Stager(DOCK.ahead(-g.staging), g)
     v, w, done = stager.step(d.Pose2D(-0.05, 0.0, 0.0))
@@ -100,7 +100,7 @@ def test_fin_a_l_aveugle_seulement_pres_de_la_ligne():
     g = d.Gains(blind=0.04)
     assert d.may_finish_blind(d.Pose2D(-0.03, 0.0, 0.0), DOCK, g)     # 3 cm : on finit
     assert d.may_finish_blind(d.Pose2D(0.002, 0.0, 0.0), DOCK, g)     # deja sur la ligne
-    assert not d.may_finish_blind(d.Pose2D(-0.06, 0.0, 0.0), DOCK, g)  # 6 cm : cube perdu = echec
+    assert not d.may_finish_blind(d.Pose2D(-0.06, 0.0, 0.0), DOCK, g)  # 6 cm : cible perdue = echec
     # l'ecart lateral ne compte pas : c'est la distance a parcourir qui decide
     assert d.may_finish_blind(d.Pose2D(-0.03, 0.05, 0.0), DOCK, g)
 

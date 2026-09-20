@@ -8,7 +8,7 @@ et, avec aruco:=true :
     /aruco_detections               identifiants et poses des marqueurs vus
     /aruco_tracker/debug            image annotee, publiee seulement si on la regarde
     TF marker_<id>                  un repere par marqueur, sous celui de l'image
-    /cube/pose, /cube/markers       pose du cube depuis ses faces vues (cube_detector.py)
+    /stone/dock_pose, /stone/markers  pierre retenue et pose d'arret (stone_detector.py)
 
 Les noeuds sont composes ensemble pour que les images circulent en
 intra-processus : une image 640x480 en rgb8 pese 900 ko, soit 13.8 Mo/s a
@@ -82,7 +82,7 @@ def setup(context):
         ))
         # Hors du conteneur : il ne lit que les detections, quelques centaines
         # d'octets, et c'est du Python.
-        extra.append(Node(package='alidade_bringup', executable='cube_detector.py',
+        extra.append(Node(package='alidade_bringup', executable='stone_detector.py',
                           output='screen',
                           parameters=[params.render_config('docking.yaml', hw, use_sim_time)]))
 
@@ -110,6 +110,6 @@ def generate_launch_description():
         DeclareLaunchArgument('hardware_revision', default_value='v1'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('aruco', default_value='true',
-                              description='detection des marqueurs ArUco du cube'),
+                              description='detection des marqueurs ArUco des pierres'),
         OpaqueFunction(function=setup),
     ])
