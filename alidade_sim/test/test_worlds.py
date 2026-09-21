@@ -54,3 +54,57 @@ def test_les_bordures_passent_sous_le_lidar():
     world = ET.parse(WORLDS / 'eurobot.sdf').getroot().find('world')
     hauteur = box(world, 'table', 'bordure_y0')[2]
     assert hauteur < laser_z, 'si la bordure depassait le LiDAR, revoir le commentaire du monde'
+
+
+# ------------------------------------------------------------------- balises
+def cylindres(world, model):
+    out = {}
+    for m in world.iter('model'):
+        if m.get('name') != model:
+            continue
+        for l in m.iter('link'):
+            c = l.find('.//collision/geometry/cylinder')
+            if c is not None:
+                out[l.get('name')] = (float(c.find('radius').text), float(c.find('length').text),
+                                      [float(v) for v in l.find('pose').text.split()][:3])
+    return out
+
+
+def test_trois_balises_aux_positions_du_reglement():
+    """Supports a 94 mm du bord (100 mm de cote, retrait de 44 mm, tous deux
+    ecrits au reglement general G.3.b) et repartis a y = 50, 1000 et 1950 mm,
+    releves sur son plan."""
+    world = ET.parse(WORLDS / 'eurobot.sdf').getroot().find('world')
+    b = cylindres(world, 'balises')
+    assert len(b) == 3, 'trois balises fixes par equipe'
+    for rayon, longueur, (x, y, z) in b.values():
+        assert rayon == pytest.approx(0.040), 'tuyau PVC de 80 mm'
+        assert longueur <= 1.000 + 1e-9, 'le reglement plafonne la balise a 1000 mm'
+        assert abs(x) == pytest.approx(0.094) or x == pytest.approx(3.094), \
+            'la balise est hors du plateau, sur son support'
+    assert sorted(round(p[2][1], 3) for p in b.values()) == [0.05, 1.0, 1.95]
+
+
+def test_les_balises_traversent_le_plan_du_lidar():
+    """Tout l'interet des balises : elles sont le seul relief qu'un LiDAR a
+    153.7 mm rencontre sur une table dont les bordures font 70 mm. Une balise
+    qui ne traverserait pas ce plan ne servirait a rien."""
+    from alidade_bringup import params
+    laser_z = params.load_revision('v1')['frames']['expected']['laser'][2]
+    world = ET.parse(WORLDS / 'eurobot.sdf').getroot().find('world')
+    for nom, (_, longueur, pose) in cylindres(world, 'balises').items():
+        bas, haut = pose[2] - longueur / 2, pose[2] + longueur / 2
+        assert bas <= laser_z <= haut, f'{nom} : hors du plan du LiDAR'
+
+
+def test_les_six_supports_sont_hors_de_la_surface_de_jeu():
+    world = ET.parse(WORLDS / 'eurobot.sdf').getroot().find('world')
+    supports = [l for l in world.iter('link') if l.get('name', '').startswith('support_balise_')]
+    assert len(supports) == 6, 'trois supports par equipe, deux equipes'
+    for l in supports:
+        x, y, _ = [float(v) for v in l.find('pose').text.split()][:3]
+        taille = [float(v) for v in l.find('.//collision/geometry/box/size').text.split()]
+        assert taille[0] == pytest.approx(0.1) and taille[1] == pytest.approx(0.1)
+        assert x + taille[0] / 2 <= 0 or x - taille[0] / 2 >= 3.0, \
+            'un support empiete sur la surface de jeu'
+        assert 0 <= y <= 2.0

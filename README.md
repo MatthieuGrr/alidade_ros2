@@ -481,6 +481,43 @@ pas : le plan beta ne les donne pas sous une forme qu'on puisse relever
 honnêtement, et inventer des cotes dans ce dépôt serait pire que de les
 laisser vides. Les pierres se posent donc à la main avec `stones.py`.
 
+**Les balises fixes sont le seul relief que le LiDAR rencontre.** Six supports,
+trois par petit côté : le règlement général écrit leur côté (100 mm) et leur
+retrait (44 mm du bord de la surface de jeu, soit un centre à 94 mm à
+l'extérieur), et son plan donne leur répartition — `y` = 50, 1000 et 1950 mm,
+relevé et symétrique. Les trois balises modélisées sont des **tuyaux PVC de
+80 mm** posés sur le côté `x = 0` ; les mettre en face demande de changer trois
+valeurs de `x` dans le monde.
+
+Trois choses à savoir avant de bâtir une localisation dessus.
+
+Un **cylindre de diamètre connu** est la cible idéale d'un LiDAR : l'arc vu
+donne le centre sans ambiguïté, ce qu'un profil plat ne donne pas.
+
+Mais les trois balises d'une équipe sont **alignées** sur un côté de 2 m — le
+règlement ne propose pas d'autre emplacement — et une résection sur trois
+points colinéaires est bien conditionnée perpendiculairement à cette ligne,
+beaucoup moins le long. Depuis le côté opposé, les trois ne couvrent plus
+qu'un éventail d'une trentaine de degrés.
+
+Et surtout, **une balise de 80 mm ne reçoit que deux faisceaux à 2,85 m.** Le
+C1 tourne à 10 Hz pour 500 points, soit un pas de 0,72° :
+
+| distance | Ø 80 mm | Ø 100 mm |
+|---|---|---|
+| 0,50 m | 9,18° = 12,7 faisceaux | 11,48° = 15,9 |
+| 1,00 m | 4,58° = 6,4 | 5,73° = 8,0 |
+| 2,00 m | 2,29° = 3,2 | 2,87° = 4,0 |
+| 2,85 m | 1,61° = **2,2** | 2,01° = 2,8 |
+
+En dessous de trois faisceaux, plus question d'ajuster un cercle : il ne reste
+que le milieu de l'arc, corrigé du rayon connu, avec une incertitude latérale
+de ±18 mm — la moitié du pas angulaire à cette distance. Deux leviers : un
+tuyau de **100 mm**, le maximum que l'enveloppe réglementaire autorise, et le
+C1 à **8 Hz** au lieu de 10, qui donne 625 points par tour à débit constant
+(pas de 0,58°). Mesuré dans la simulation : depuis la salle du trône bleue,
+le scan ne contient rien d'autre que six points, deux par balise.
+
 Trois choix qui ne vont pas de soi :
 
 - **Un maillage, pas un `<box>`.** Une boîte SDF prend bien une texture, mais

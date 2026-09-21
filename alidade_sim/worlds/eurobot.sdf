@@ -14,6 +14,10 @@
   proche, pas au millimetre. A reprendre des que Planete Sciences publie un
   plan cote.
 
+  LES BALISES FIXES sont la : six supports (cote et retrait ecrits au reglement
+  general, positions relevees sur son plan) et trois tuyaux PVC de 80 mm sur le
+  cote x = 0. C'est le seul relief que le LiDAR voit d'une table.
+
   CE QUI MANQUE : les carrieres, remparts, douves et cour. Le reglement renvoie
   au plan pour leur repartition, et ce plan ne les donne pas sous une forme
   qu'on puisse relever honnetement. Les pierres se posent donc a la main
@@ -135,6 +139,101 @@
         <pose>0.25 1.03 0.0005 0 0 0</pose>
         <visual name="v"><geometry><box><size>0.5 0.5 0.001</size></box></geometry>
           <material><ambient>0.97 0.71 0.0 1</ambient><diffuse>0.97 0.71 0.0 1</diffuse></material>
+        </visual>
+      </link>
+
+      <!-- Supports de balise fixe : six carres de 100 mm au niveau du sol de la
+           table, trois par petit cote. Le reglement general (G.3.b) ecrit la
+           cote de 100 mm et le retrait de 44 mm du bord de la surface de jeu,
+           d'ou un centre a 94 mm a l'exterieur. Les POSITIONS le long du bord
+           sont relevees sur son plan (figure 3, page 29), ou le support central
+           est exactement sur y = 1000 et celui du coin couvre y = 0 a 100 :
+           y = 50, 1000 et 1950 mm, symetriques.
+
+           La bordure de 70 mm se dresse entre la balise et le plateau. Elle ne
+           gene pas : le LiDAR est a 153.7 mm et passe au-dessus. -->
+      <link name="support_balise_x0_1">
+        <pose>-0.094 0.05 -0.011 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.1 0.1 0.022</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.1 0.1 0.022</size></box></geometry>
+          <material><ambient>0.66 0.65 0.60 1</ambient><diffuse>0.66 0.65 0.60 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="support_balise_x0_2">
+        <pose>-0.094 1.0 -0.011 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.1 0.1 0.022</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.1 0.1 0.022</size></box></geometry>
+          <material><ambient>0.66 0.65 0.60 1</ambient><diffuse>0.66 0.65 0.60 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="support_balise_x0_3">
+        <pose>-0.094 1.95 -0.011 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.1 0.1 0.022</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.1 0.1 0.022</size></box></geometry>
+          <material><ambient>0.66 0.65 0.60 1</ambient><diffuse>0.66 0.65 0.60 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="support_balise_x3000_1">
+        <pose>3.094 0.05 -0.011 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.1 0.1 0.022</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.1 0.1 0.022</size></box></geometry>
+          <material><ambient>0.66 0.65 0.60 1</ambient><diffuse>0.66 0.65 0.60 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="support_balise_x3000_2">
+        <pose>3.094 1.0 -0.011 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.1 0.1 0.022</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.1 0.1 0.022</size></box></geometry>
+          <material><ambient>0.66 0.65 0.60 1</ambient><diffuse>0.66 0.65 0.60 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="support_balise_x3000_3">
+        <pose>3.094 1.95 -0.011 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.1 0.1 0.022</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.1 0.1 0.022</size></box></geometry>
+          <material><ambient>0.66 0.65 0.60 1</ambient><diffuse>0.66 0.65 0.60 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Les trois balises de l'equipe : tuyaux PVC de 80 mm, poses sur les
+         supports du petit cote x = 0. Sur l'autre cote, changer les trois x
+         pour 3.094.
+
+         POURQUOI CE COTE. Le robot part de la salle du trone bleue, pres de
+         x = 3000 : des balises dans son dos y donneraient une base tres courte
+         pour trianguler. Depuis le cote oppose, les trois couvrent 1.9 m de
+         front, et l'angle entre elles reste exploitable de partout sur la table.
+
+         HAUTEUR. Le reglement plafonne la balise a 1000 mm et 1.5 kg ; c'est ce
+         qui est modelise. Pour le LiDAR SEUL, tout ce qui compte est que le
+         tuyau traverse le plan a 153.7 mm : 300 mm de tuyau suffiraient et
+         peseraient bien moins. La hauteur ne se justifie que si une camera ou
+         une balise active s'y ajoute.
+
+         Un cylindre de diametre connu est la cible ideale d'un LiDAR : l'arc vu
+         donne le centre sans ambiguite, ce qu'un profil plat ne donne pas. -->
+    <model name="balises">
+      <static>true</static>
+      <link name="balise_1">
+        <pose>-0.094 0.05 0.5 0 0 0</pose>
+        <collision name="c"><geometry><cylinder><radius>0.04</radius><length>1.0</length></cylinder></geometry></collision>
+        <visual name="v"><geometry><cylinder><radius>0.04</radius><length>1.0</length></cylinder></geometry>
+          <material><ambient>0.88 0.88 0.86 1</ambient><diffuse>0.93 0.93 0.91 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="balise_2">
+        <pose>-0.094 1.0 0.5 0 0 0</pose>
+        <collision name="c"><geometry><cylinder><radius>0.04</radius><length>1.0</length></cylinder></geometry></collision>
+        <visual name="v"><geometry><cylinder><radius>0.04</radius><length>1.0</length></cylinder></geometry>
+          <material><ambient>0.88 0.88 0.86 1</ambient><diffuse>0.93 0.93 0.91 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="balise_3">
+        <pose>-0.094 1.95 0.5 0 0 0</pose>
+        <collision name="c"><geometry><cylinder><radius>0.04</radius><length>1.0</length></cylinder></geometry></collision>
+        <visual name="v"><geometry><cylinder><radius>0.04</radius><length>1.0</length></cylinder></geometry>
+          <material><ambient>0.88 0.88 0.86 1</ambient><diffuse>0.93 0.93 0.91 1</diffuse></material>
         </visual>
       </link>
     </model>
