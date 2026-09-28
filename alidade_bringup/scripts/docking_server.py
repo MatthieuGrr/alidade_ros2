@@ -14,7 +14,7 @@ Chaque pose d'arret detectee est ramenee dans odom avec la pose du robot a
 l'instant de l'IMAGE, prise dans un historique de l'odometrie : sans cela,
 les ~300 ms de latence de la detection deplaceraient la cible d'autant de
 chemin parcouru. Cet instant est l'heure de RECEPTION moins la latence
-mesuree (detection_latency), et non l'horodatage de l'image, qu'usb_cam
+mesuree (detection_latency), et non l'horodatage de l'image, que le pilote
 decale d'environ 0.5 s. La cible etant immobile, elle est ensuite lissee
 dans odom, centre et cap separement (docking.TargetFilter explique pourquoi).
 

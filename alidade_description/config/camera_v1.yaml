@@ -1,5 +1,16 @@
+# Intrinseques de reference pour le BANC HORS LIGNE (aruco_bench.py).
+#
+# CE N'EST PLUS LA CALIBRATION DU ROBOT. Elles decrivent la Logitech C920 qui
+# equipait la v1 ; le D435i qui l'a remplacee sort les siennes d'usine et son
+# pilote publie un camera_info calibre, sans fichier a maintenir.
+#
+# Elles restent ici parce que le banc rend des images de synthese et doit bien
+# se donner des intrinseques : celles-ci sont mesurees, coherentes, et servent
+# de reference tant que celles du D435i n'ont pas ete relevees. Les chiffres du
+# banc valent donc les uns par rapport aux autres, pas en absolu sur le nouveau
+# capteur.
+#
 # Intrinseques de la C920 (revision v1), format camera_info_manager, charge par
-# usb_cam via camera_info_url. Decrit l'image du pilote, en 640x480.
 #
 # Calibration du 11 sept. 2026 (camera_calibration, damier 8x6 coins de 25 mm),
 # mise au point FIXE a focus 30 : la focale varie de 8 % sur la course de mise

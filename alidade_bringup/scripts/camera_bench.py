@@ -8,14 +8,17 @@
 mire (variance du laplacien sur son emprise) a chaque valeur, puis remet la
 valeur de depart. A lancer a deux distances qui encadrent l'usage ; la valeur
 retenue va dans camera.focus de la revision, et impose une calibration : la
-focale de la C920 varie de 8 % sur la course de mise au point.
+focale de la C920 variait de 8 % sur la course de mise au point. Le D435i qui
+l'a remplacee n'a pas de mise au point reglable et sort ses intrinseques
+d'usine : ce banc sert desormais a mesurer la CADENCE et la LATENCE, pas a
+preparer une calibration.
 
 'relay' decode le JPEG du robot en image brute locale sur /calib/image. Le
 calibrateur a besoin d'un ecran, donc du poste, et l'image brute (900 ko) ne
 passe pas proprement en WiFi ; quant au republish d'image_transport, sous
 Jazzy il ne s'abonne jamais a son entree. Pendant la calibration, monter la
 qualite JPEG a 95 limite les artefacts sur les coins :
-    ros2 param set /camera/usb_cam .image_raw.compressed.jpeg_quality 95
+    ros2 param set /camera/camera .color.image_raw.compressed.jpeg_quality 95
 """
 import argparse
 import subprocess

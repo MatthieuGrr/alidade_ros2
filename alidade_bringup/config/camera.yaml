@@ -1,27 +1,52 @@
-# Camera C920 : pilote usb_cam. Gabarit rendu au lancement ; le bloc est passe
-# explicitement au composant par camera.launch.py, le nom de noeud n'a pas a
-# coincider.
+# Camera Intel RealSense D435i : pilote realsense2_camera. Gabarit rendu au
+# lancement ; le bloc est passe explicitement au noeud par camera.launch.py, le
+# nom de noeud n'a pas a coincider.
 #
-# La camera est montee a l'endroit : l'image du pilote est deja droite, dans le
-# repere optique de la CAO. En mjpeg2rgb, usb_cam decode le MJPEG de la camera
-# et image_transport en reencode un JPEG sur image_raw/compressed, pour l'interface.
-usb_cam:
+# CE QUI CHANGE PAR RAPPORT A LA C920 QU'ELLE REMPLACE, et qui evite trois
+# fausses pistes :
+#
+#   - PAS de fichier de calibration. Le D435i sort ses intrinseques d'usine et
+#     le pilote publie un camera_info calibre. `camera_info_url` n'existe pas
+#     ici, et en chercher un est une perte de temps.
+#   - PAS de repere optique a declarer. Le pilote publie lui-meme la chaine
+#     `<camera_name>_*_optical_frame` a partir des extrinseques CALIBREES de
+#     l'exemplaire. L'URDF ne les fournit qu'en simulation, ou personne d'autre
+#     ne le ferait (voir use_nominal_extrinsics dans alidade.urdf.xacro).
+#   - `camera_name` prefixe TOUS les reperes et tous les sujets. Il doit valoir
+#     la meme chose que le `name` passe a la macro URDF, sans quoi les images et
+#     les TF ne parlent pas du meme capteur, en silence.
+camera:
   ros__parameters:
     use_sim_time: ${use_sim_time}
-    video_device: ${camera.device}
-    framerate: ${camera.fps}
-    io_method: mmap
-    frame_id: ${camera.frame}
-    pixel_format: ${camera.pixel_format}
-    av_device_format: YUV422P
-    image_width: ${camera.width}
-    image_height: ${camera.height}
-    camera_name: alidade_c920
-    camera_info_url: package://alidade_description/config/${camera.calibration}
-    # autofocus et focus sont aussi appliques par camera.launch.py, sous les
-    # noms de commandes que le noyau connait (voir la).
-    autofocus: ${camera.autofocus}
-    focus: ${camera.focus}
-    brightness: ${camera.brightness}
-    autoexposure: true
-    auto_white_balance: true
+    camera_name: ${camera.name}
+    # Vide = le pilote prend la premiere camera trouvee. A renseigner le jour ou
+    # il y en a deux sur le meme bus.
+    serial_no: '${camera.serial_no}'
+    # Profils de flux, au format attendu par le pilote : largeur,hauteur,cadence.
+    rgb_camera.color_profile: '${camera.width}x${camera.height}x${camera.fps}'
+    depth_module.depth_profile: '${camera.depth_width}x${camera.depth_height}x${camera.depth_fps}'
+    enable_color: true
+    enable_depth: ${camera.enable_depth}
+    # Les deux infrarouges ne servent a rien ici et coutent de la bande passante
+    # USB, qui est la ressource rare sur ce capteur.
+    enable_infra1: ${camera.enable_infra}
+    enable_infra2: ${camera.enable_infra}
+    pointcloud.enable: ${camera.pointcloud}
+    # IMU du D435i (BMI055) COUPEE, volontairement. Le cap de l'odometrie vient
+    # du BNO055, dont le biais et l'echelle sont mesures. Deux sources de cap
+    # non fusionnees ne valent pas mieux qu'une, et brancher celle-ci
+    # demanderait de la calibrer a son tour.
+    enable_gyro: ${camera.enable_gyro}
+    enable_accel: ${camera.enable_accel}
+    # Le pilote publie map->camera_link s'il croit etre seul. Ici l'URDF place
+    # deja la camera sur le robot : le laisser faire creerait deux parents pour
+    # le meme repere, et TF choisirait au hasard.
+    publish_tf: true
+    tf_publish_rate: 0.0          # 0 = TF statiques, publiees une fois
+    # Aligne la profondeur sur l'image couleur : sans cela les deux flux ont des
+    # points de vue differents de 15 mm et rien ne se superpose.
+    align_depth.enable: ${camera.enable_depth}
+    # Sans cette temporisation, un demarrage a froid du Pi rate la camera une
+    # fois sur trois : le peripherique USB n'est pas encore enumere.
+    wait_for_device_timeout: 10.0
+    initial_reset: false

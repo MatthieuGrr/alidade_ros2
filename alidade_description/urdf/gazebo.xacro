@@ -76,8 +76,12 @@
     <xacro:property name="camera" value="${hw['camera']}"/>
     <gazebo reference="${camera['frame']}">
       <sensor name="camera" type="camera">
-        <!-- gz publie l'image sur ce topic et le camera_info a cote de lui. -->
-        <topic>camera/image_raw</topic>
+        <!-- gz publie l'image sur ce topic et le camera_info a cote de lui.
+             Meme nom que le vrai pilote RealSense, pour qu'aruco_opencv et le
+             detecteur ne sachent pas de quel cote ils tournent. Seule la
+             COULEUR est simulee : la profondeur du D435i n'est encore utilisee
+             par rien, et un capteur rgbd en rendu logiciel coute cher. -->
+        <topic>camera/color/image_raw</topic>
         <update_rate>${camera['fps']}</update_rate>
         <always_on>1</always_on>
         <visualize>false</visualize>

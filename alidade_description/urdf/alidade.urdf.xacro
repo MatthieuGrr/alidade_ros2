@@ -17,7 +17,7 @@
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="alidade">
 
-  <xacro:arg name="hardware_revision" default="v1"/>
+  <xacro:arg name="hardware_revision" default="v2"/>
   <xacro:arg name="target" default="real"/>
   <xacro:arg name="use_mock_hardware" default="false"/>
   <xacro:arg name="pico_port" default="/dev/pico"/>
@@ -34,6 +34,20 @@
 
   <!-- Geometrie, masses et collisions : export Onshape corrige. -->
   <xacro:include filename="$(find alidade_description)/urdf/generated/alidade_${revision}.urdf"/>
+
+  <!-- Camera Intel D435i. Sa geometrie interne vient du paquet du constructeur,
+       qui est la source amont : on n'y accroche que notre point de fixation.
+       `use_nominal_extrinsics` decide qui publie les reperes optiques : en
+       simulation personne d'autre ne le fera, sur le robot c'est le driver, et
+       avec les extrinseques CALIBREES de l'exemplaire, que les nominales ne
+       feraient qu'approcher. -->
+  <xacro:property name="cam" value="${hw['camera']}"/>
+  <xacro:include filename="$(find realsense2_description)/urdf/_d435i.urdf.xacro"/>
+  <xacro:sensor_d435i parent="${cam['mount_link']}" name="${cam['name']}"
+                      use_nominal_extrinsics="${target == 'sim'}" use_mesh="false">
+    <origin xyz="${cam['mount_offset'][0]} ${cam['mount_offset'][1]} ${cam['mount_offset'][2]}"
+            rpy="0 0 0"/>
+  </xacro:sensor_d435i>
 
   <xacro:include filename="$(find alidade_description)/urdf/ros2_control.xacro"/>
   <xacro:alidade_ros2_control hw="${hw}" target="${target}" use_mock="${use_mock}" pico_port="$(arg pico_port)"/>

@@ -12,7 +12,7 @@ CONFIGS = ['controllers.yaml', 'nav2.yaml', 'slam.yaml', 'rplidar.yaml', 'camera
 
 @pytest.fixture(scope='module')
 def revision():
-    return params.load_revision('v1')
+    return params.load_revision('v2')
 
 
 @pytest.mark.parametrize('filename', CONFIGS)

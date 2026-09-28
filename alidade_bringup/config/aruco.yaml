@@ -17,9 +17,12 @@ aruco_tracker:
   ros__parameters:
     use_sim_time: ${use_sim_time}
 
-    # Flux du pilote. image_transport en deduit le camera_info en remplacant le
-    # dernier element du chemin : /camera/image_raw -> /camera/camera_info.
-    cam_base_topic: /camera/image_raw
+    # Flux couleur du pilote RealSense. image_transport en deduit le camera_info
+    # en remplacant le dernier element du chemin :
+    #     /camera/color/image_raw -> /camera/color/camera_info
+    # Le meme nom sert en simulation (voir gazebo.xacro) : le detecteur ne sait
+    # pas de quel cote il tourne, et c'est le but.
+    cam_base_topic: /camera/color/image_raw
     image_sub_compressed: false
     image_sub_qos:
       reliability: 1      # 1 = reliable ; voir l'avertissement plus haut

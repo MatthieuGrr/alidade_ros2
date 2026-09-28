@@ -1,0 +1,378 @@
+# Révision matérielle v2 d'Alidade.
+#
+# Ce fichier est LA source de toutes les constantes physiques du robot. Le
+# xacro, controllers.yaml et nav2.yaml lisent ici ; aucune valeur ne doit être
+# recopiée à la main ailleurs. Une révision suivante est un second fichier de
+# ce format, sélectionné par l'argument hardware_revision, sans toucher au code.
+#
+# Les valeurs sont mesurées, pas déduites de fiches techniques — voir chaque
+# section. Celles qui ne le sont pas ENCORE sont listées dans `provisional`,
+# et le build les rappelle à chaque compilation.
+#
+# ---------------------------------------------------------------------------
+# CE QUI CHANGE DEPUIS v1 (châssis entièrement redessiné, sept. 2026). La v1
+# décrivait un robot qui n'existe plus ; elle a été supprimée, pas conservée.
+#
+#   plateau     158 × 156 mm        ->  250 × 252 mm
+#   roues       Ø64 × 30 mm         ->  Ø99.6 × 24 mm
+#   entraxe     191 mm (CAO)        ->  225 mm (CAO)
+#   roulette    bille Ø22 à l'AVANT ->  Ø50 à l'ARRIÈRE, 70.6 mm de haut
+#   LiDAR       x +45.6, z 153.7    ->  x -99.8, z 165.2
+#   caméra      C920 sur support 20°->  RealSense D435i
+#   encombrement 209 × 217 mm       ->  254 × 252 × 176 mm
+#
+# Les moteurs, le réducteur, les encodeurs, le Pi, la batterie, le LiDAR et
+# l'IMU sont les MÊMES pièces : leurs volumes d'export sont identiques au
+# centième près. Tout ce qui les concerne est repris de v1 sans réserve.
+#
+# base_footprint reste au sol sur l'axe des roues, mais cet axe n'est plus au
+# milieu du robot : 55 mm de la face avant, 199 mm de l'arrière.
+
+revision: v2
+
+# Export URDF Onshape corrigé par scripts/fix_urdf.py, relatif à urdf/.
+onshape_export: onshape/alidade_v2.urdf
+
+# Valeurs pas encore mesurées sur CE châssis : reprises de la CAO ou de la
+# révision précédente. fix_urdf.py les rappelle à chaque build pour qu'aucune
+# ne s'installe par habitude. Retirer une entrée d'ici est la dernière étape
+# d'une mesure, jamais la première.
+provisional:
+  kinematics.wheel_radius: rayon CAO ; le rayon de ROULEMENT sous charge se
+    mesure avec `ros2 run alidade_bringup odom_calib.py straight`
+  kinematics.wheel_separation: entraxe CAO ; entraxe EFFICACE par
+    `odom_calib.py rotate` dans les deux sens
+  motor.max_linear_acceleration: déduit du couple, pas mesuré (voir motor)
+  masses.base_link: pesée de la v1, châssis depuis agrandi
+  masses.wheel_left_link: pesée des roues Ø64
+  masses.wheel_right_link: pesée des roues Ø64
+  lidar.mount_rpy: mis à zéro d'après le code du pilote et la datasheet, le
+    demi-tour étant désormais annulé par flip_x_axis ; à confirmer au banc avec
+    `ros2 run alidade_bringup lidar_zero.py` avant d'y croire
+  camera.mount_link: le repère CAO tombe sur la vis à 1.5 mm de ce que prédisent
+    les constantes Intel ; un contrôle au réglet sur le robot lèverait le doute
+  imu.orientation: le repère imu_link est retourné de 180° autour de x dans le
+    nouvel export ; vérifier le SIGNE du cap avant tout essai en mouvement
+
+# ---------------------------------------------------------------------------
+# Cinématique différentielle.
+kinematics:
+  # COTES CAO, PAS ENCORE CALIBRÉES. Les roues sont à y = ±0.1125 dans
+  # l'export, et le disque mesure Ø99.6 pour un axe à 50.0 mm du sol.
+  #
+  # La calibration de la v1 ne se transpose PAS : elle valait pour des pneus
+  # Ø64 sur ce plancher-là. Elle avait trouvé un rayon de roulement 1.9 % plus
+  # grand que la cote CAO et un entraxe efficace 1.5 % plus grand que la CAO —
+  # deux écarts du même ordre sont à attendre ici, mais leur signe et leur
+  # ampleur se mesurent, ils ne se supposent pas.
+  #
+  # Tant que ce n'est pas fait, l'odométrie est fausse d'un FACTEUR, pas d'une
+  # dérive : par rapport à la v1, un rayon 1.534 fois plus grand et un entraxe
+  # 1.160 fois plus grand. Rien de ce qui en dépend ne peut être jugé avant.
+  #
+  #   ros2 run alidade_bringup odom_calib.py straight    (rayon)
+  #   ros2 run alidade_bringup odom_calib.py rotate      (entraxe, deux sens)
+  #
+  # Puis reporter ici, retirer les entrées de `provisional`, et décaler les
+  # disques de collision pour que la simulation voie le même entraxe efficace
+  # (voir collisions).
+  wheel_separation: 0.225
+  wheel_radius: 0.050
+  # 11 PPR × 4 (quadrature) × 34:1. MESURÉ sur 10 tours de roue à la main
+  # (14 960 ticks) : le réducteur livré est en 34:1 et non 35:1. Se tromper
+  # coûte 2.9 % sur les distances et 10° sur un tour complet du robot.
+  counts_per_rev: 1496
+
+# Motorisation, pour borner les consignes côté Pi : le firmware n'applique
+# aucune limite et exécute la consigne telle quelle.
+motor:
+  rated_rpm: 170           # GA25-370 à 24 V, en sortie de réducteur
+  # Vitesses de croisière retenues pour ce robot. Les roues Ø100 portent la
+  # pleine échelle de 0.58 à 0.89 m/s : les plafonds ci-dessous, inchangés,
+  # laissent donc encore plus de marge au PID du Pico qu'en v1.
+  max_linear_velocity: 0.40     # m/s
+  max_angular_velocity: 2.50    # rad/s
+  # DÉDUIT, pas mesuré. À couple moteur identique, une roue 1.534 fois plus
+  # grande donne 1.534 fois moins de force au sol : le 1.0 m/s² de la v1
+  # devient 0.65. Une consigne d'accélération que les moteurs ne peuvent pas
+  # tenir ne se voit pas — le PID sature en silence et le robot part de
+  # travers. À vérifier au banc, montre en main, avant de remonter.
+  max_linear_acceleration: 0.65 # m/s²
+  max_angular_acceleration: 3.5 # rad/s², à revérifier : l'inertie a augmenté
+
+# ---------------------------------------------------------------------------
+# Empreinte, depuis base_footprint. Mesurée sur l'enveloppe des maillages de
+# l'export, origines de `visual` comprises — un maillage Onshape vit dans le
+# repère de sa pièce, et lire sa boîte englobante sans cette origine donne des
+# robots asymétriques qui n'existent pas.
+#
+# ATTENTION : l'axe des roues n'est plus au milieu du robot. base_footprint est
+# à 55 mm de la face avant et à 199 mm de l'arrière. Le modèle CIRCULAIRE de
+# nav2 (robot_radius) est donc très conservateur devant — il réserve 235 mm
+# là où 55 suffisent. Une empreinte polygonale rendrait au robot 18 cm de
+# dégagement frontal ; à décider quand la navigation reprendra.
+footprint:
+  circumscribed_radius: 0.2347 # coin arrière du plateau, le point le plus loin
+  robot_radius: 0.24           # valeur nav2, arrondie au-dessus
+  length: 0.2541               # encombrement au sol, selon X (-0.1992 .. +0.0549)
+  width: 0.2520                # selon Y, pneus compris (±0.126)
+  height: 0.1759               # point le plus haut : le LiDAR
+  front_x: 0.052               # face avant du plateau ; depuis le ré-export du
+                               # 28 sept. 2026 la caméra ne dépasse plus (0.025)
+
+# ---------------------------------------------------------------------------
+# Poses attendues des repères principaux, exprimées depuis base_footprint.
+# Ce ne sont PAS des valeurs d'entrée : la géométrie vient de l'export Onshape.
+# fix_urdf.py vérifie que l'export les respecte et fait échouer le build sinon,
+# pour qu'un réexport qui a bougé se voie immédiatement.
+frames:
+  tolerance: 0.001             # m
+  expected:
+    base_link:            [ 0.0520,  0.0,     0.0706]
+    wheel_left_link:      [ 0.0,     0.1125,  0.0500]
+    wheel_right_link:     [ 0.0,    -0.1125,  0.0500]
+    laser:                [-0.0998,  0.0,     0.1652]
+    imu_link:             [-0.0019, -0.0026,  0.0660]
+    camera_mount_link:    [ 0.0120,  0.0,     0.1156]
+    caster_wheel_link:    [-0.1888,  0.0187,  0.0706]
+
+# ---------------------------------------------------------------------------
+# Corrections propres à l'exporteur Onshape.
+
+# Racine synthétique fabriquée par l'exporteur, sur laquelle la CAO ne donne
+# aucune prise. base_footprint est au sol, au milieu de l'axe des roues.
+rename_root:
+  from: root
+  to: base_footprint
+
+# Plus aucun renommage de link ni de joint : l'export sort `camera_mount_link`
+# et `camera_mount_joint`, qui n'entrent en collision avec rien. La macro
+# `sensor_d435i` crée ses propres `camera_link` et `camera_joint` ; tant que la
+# CAO ne les revendique pas, il n'y a rien à arbitrer. Si un jour un export
+# ramène l'homonymie, `rename_links` et `rename_joints` existent toujours dans
+# fix_urdf.py, et le message d'erreur dit quoi ajouter ici.
+
+# Masses pesées à la balance, en kg. L'exporteur ne transmet pas les
+# matériaux : tout sort à une densité de 1 kg/m³. Comme cette densité est
+# uniforme, chaque tenseur d'inertie est juste à un facteur près, et le
+# corriger revient à le multiplier par m_mesurée / m_exportée.
+#
+# Seuls les corps qui pèsent sont listés. Les autres links gardent leur masse
+# d'export (quelques dixièmes de gramme) : ce sont des porteurs de repère dont
+# la masse est déjà comptée dans base_link. Total : 1.598 kg.
+# PESÉES DE LA v1, reprises telles quelles sauf la batterie. Le plateau a
+# gagné 166 cm³ de matière, le deck 71, et chaque roue est passée de 32 à
+# 168 cm³ : ces trois-là sont fausses et il n'y a aucun moyen honnête de les
+# déduire (la masse de base_link agrège de l'électronique dont le volume n'a
+# pas bougé). Balance, pas règle de trois.
+masses:
+  base_link: 1.051         # châssis complet : platines, moteurs, électronique, capteurs
+  battery_link: 0.449      # même batterie qu'en v1, volume d'export identique
+  wheel_left_link: 0.049   # jante + pneu — valeur des roues Ø64, À REPESER
+  wheel_right_link: 0.049  # idem
+
+# Géométries de collision. L'export n'en produit aucune, et les maillages
+# visuels (37 Mo) sont injouables dans un moteur physique.
+# Primitives de collision. L'export ne fournit que des maillages : Gazebo les
+# accepte mais le solveur y perd, et un maillage de roue ne roule pas comme une
+# roue. Chaque corps portant se voit donc donner une primitive.
+collisions:
+  base_link:
+    shape: box
+    # Enveloppe du corps, roues et roulette exclues : x -199.2..+54.9,
+    # y ±126.0, z +36.9..+175.9 dans base_footprint.
+    size: [0.2541, 0.2520, 0.1390]
+    origin: [-0.1242, 0.0, 0.0358]
+    mu: 0.2
+  wheel_left_link:
+    shape: cylinder
+    # Rayon de roulement (kinematics.wheel_radius), pas la cote CAO : le
+    # contrôleur et la simulation doivent voir la MÊME roue. Les deux valent
+    # 0.050 tant que la calibration n'a pas eu lieu.
+    radius: 0.050
+    # Disque fin volontairement : le solveur résout le contact cylindre/plan
+    # sur un bord du cylindre, pas sous l'axe. Avec la largeur réelle du pneu,
+    # l'entraxe efficace s'effondrait de 13.8 % en v1 ; à 4 mm, l'erreur
+    # retombait à 2.0 %. Le pneu a changé, la ruse reste valable.
+    length: 0.004
+    # Décalage vers l'extérieur pour porter l'entraxe SIMULÉ à l'entraxe
+    # déclaré. MESURÉ en simulation (deux tours pleins dans chaque sens,
+    # positions d'articulation contre vérité Gazebo) : décalage nul, le
+    # solveur rend 221.0 mm pour 225.0 déclarés, soit -1.78 %. Le contact du
+    # disque ne tombe pas exactement dans son plan médian, et c'est reproductible
+    # (0.0 mm d'écart entre les deux sens). On rattrape les 4 mm manquants en
+    # écartant chaque roue de 2.0 mm.
+    #
+    # À refaire si le rayon change, ou après calibration de l'entraxe réel :
+    # ce décalage vaut (entraxe_voulu - entraxe_mesuré_à_zéro) / 2.
+    origin: [0.0, 0.002, 0.0]
+    rpy: [1.5708, 0.0, 0.0]   # l'axe d'un cylindre URDF est Z, la roue tourne sur Y
+    mu: 1.2
+  wheel_right_link:
+    shape: cylinder
+    radius: 0.050
+    length: 0.004
+    origin: [0.0, -0.002, 0.0]
+    rpy: [1.5708, 0.0, 0.0]
+    mu: 1.2
+  caster_wheel_link:
+    shape: sphere
+    # La roulette fait Ø50.2 sur 70.6 mm de haut, son link étant en HAUT du
+    # corps. Une sphère au point de contact (x -0.170, y 0, z +0.0251 dans
+    # base_footprint) modélise le pivot sans que le solveur ait à le simuler.
+    radius: 0.0251
+    origin: [0.0188, -0.0187, -0.0455]
+    mu: 0.01                 # glisse au lieu de freiner en virage
+
+# Depuis la v2, le LiDAR est le point le plus haut du robot (165.2 mm, contre
+# 135.1 pour le Pi qui vient ensuite) : plus rien ne l'occulte, le tour complet
+# est exploitable. Il a reculé de 145.8 mm et monté de 11.5 mm par rapport à la
+# v1, où il regardait par-dessus un châssis plus encombré.
+lidar:
+  frame: laser
+  # Orientation du repère de MESURE. La CAO place le capteur mais ne dit pas où
+  # tombe son 0° ; ici elle suffit pourtant, et la correction est NULLE.
+  #
+  # La flèche du dessus du C1 EST le 0° du balayage (datasheet, figure 1-2 :
+  # l'axe de référence part du centre à travers le triangle, à l'opposé du
+  # câble), et elle est alignée sur +x. Le repère exporté est donc juste tel
+  # quel.
+  #
+  # Une rotation de π traînait ici jusqu'au 28 septembre 2026. Elle compensait
+  # en réalité une convention du PILOTE, qui publie θ_ros = π − θ_brut là où la
+  # conversion juste est θ_ros = −θ_brut. La correction est passée où est sa
+  # cause : `flip_x_axis: true` dans config/rplidar.yaml, qui l'explique en
+  # détail. Ne pas remettre un angle ici sans avoir lu ce commentaire — les
+  # deux réglages se compensent, et les activer tous les deux ramène l'erreur.
+  mount_rpy: [0.0, 0.0, 0.0]
+  rotation_hz: 10            # 8-12 Hz possibles
+  samples_per_rev: 500       # 5 kHz / 10 Hz, soit 0.72°
+  range_min: 0.05
+  range_max: 12.0            # objet blanc ; 6.0 sur objet noir
+  range_resolution: 0.015
+  accuracy: 0.030            # ±30 mm
+  noise_stddev: 0.015        # ≈ 2 sigma pour ±30 mm
+  serial_baudrate: 460800    # propre au C1
+
+# CAMÉRA : Intel RealSense D435i, sur USB 3.
+#
+# La géométrie interne du capteur (décalages des centres optiques couleur,
+# profondeur, infrarouge, et des deux modules inertiels) n'est PAS décrite ici :
+# elle vient de `realsense2_description`, qui est la source amont. On ne fait
+# qu'y accrocher notre point de fixation. Recopier ces cotes serait les figer à
+# la version d'aujourd'hui pour rien.
+#
+# `camera_mount_link` (ex-`camera_link` de l'export) est le centre optique du
+# capteur de PROFONDEUR, convention Intel. La macro s'attache par sa vis de
+# fixation, qui est à (10.6, 17.5, 12.5) mm de ce centre : d'où le décalage
+# négatif dans alidade.urdf.xacro. Un test vérifie que la chaîne retombe bien
+# sur la position mesurée en CAO.
+camera:
+  frame: camera_color_optical_frame   # publié par le driver, ou par la macro en simulation
+  mount_link: camera_mount_link
+  # Décalage du point de fixation depuis `mount_link`. NUL depuis le ré-export
+  # du 28 septembre 2026 : la CAO place le repère directement sur le trou de
+  # fixation du D435i, qui est ce que la macro attend. Vérifié contre
+  # l'enveloppe du maillage — le centre optique de profondeur retombe à 1.5 mm
+  # près de là où les constantes Intel le placent, soit dans le bruit de lecture
+  # d'une boîte englobante.
+  #
+  # C'est le bon partage : la CAO décrit une VIS, feature physique et mesurable ;
+  # la géométrie interne du capteur reste chez son fabricant. Un décalage non nul
+  # ici voudrait dire que le repère a glissé de la vis, pas qu'Intel a bougé.
+  mount_offset: [0.0, 0.0, 0.0]
+  # Nom de la caméra pour le driver ET pour la macro : c'est lui qui préfixe
+  # tous les repères (`<name>_color_optical_frame`...). Les deux doivent être
+  # d'accord, sinon les TF et les images ne parlent pas du même capteur.
+  name: camera
+  # Numéro de série, pour épingler l'exemplaire si un jour il y en a deux.
+  # Vide = le driver prend la première caméra qu'il trouve.
+  serial_no: ''
+  # Flux couleur. 640x480 suffit pour de la détection de marqueurs et laisse de
+  # la bande passante USB ; le D435i monte à 1920x1080 si besoin.
+  width: 640
+  height: 480
+  fps: 15.0                    # flottant : plusieurs gabarits déclarent un double
+  # Flux profondeur. Non exploité pour l'instant, mais publié : c'est la raison
+  # d'être de ce capteur, et l'activer coûte peu.
+  depth_width: 640
+  depth_height: 480
+  depth_fps: 15.0
+  enable_depth: true
+  enable_infra: false          # les deux infrarouges ne servent pas ici
+  pointcloud: false            # coûteux sur un Pi 5 ; à activer au besoin
+  # L'IMU du D435i (BMI055) reste COUPÉE. Le cap de l'odométrie vient du BNO055,
+  # dont le biais et l'échelle sont mesurés (voir la section imu). Deux sources
+  # de cap non fusionnées ne valent pas mieux qu'une seule, et brancher celle-ci
+  # demanderait de la calibrer à son tour.
+  enable_gyro: false
+  enable_accel: false
+  # Les intrinsèques viennent du capteur lui-même : le driver publie un
+  # camera_info calibré en usine. Pas de fichier de calibration à maintenir,
+  # contrairement à la C920 qu'il remplace.
+  #
+  # Simulation seulement. Ouverture horizontale du flux couleur du D435i :
+  # 69 degrés selon la fiche Intel, soit 1.204 rad. À ne pas confondre avec
+  # celle de la profondeur (87 degrés).
+  sim_horizontal_fov: 1.204
+  # Bruit gaussien de l'image simulée, en fraction de la pleine échelle. Une
+  # image de synthèse parfaite donne un taux de détection de marqueurs
+  # irréaliste : le détecteur ne rate jamais ce qu'aucun capteur ne rendrait
+  # aussi net.
+  sim_noise_stddev: 0.006
+  # La PROFONDEUR n'est pas simulée : rien ne la consomme encore, et un capteur
+  # `rgbd_camera` en rendu logiciel coûte cher pour une donnée que personne ne
+  # lit. Le jour où elle servira, la fiche D435i donne 0.28 m de minimum et
+  # 3 m de portée utile. Sur le vrai robot elle EST publiée (enable_depth).
+
+# BNO055 en mode IMU (6 axes, magnétomètre coupé). Le Pico transmet les
+# entiers bruts ; la conversion SI se fait côté Pi avec ces facteurs
+# (registre UNIT_SEL = 0x00 du composant).
+# BNO055 en mode IMU (fusion accéléromètre + gyromètre, magnétomètre coupé),
+# lue par le Pico. Le gyromètre donne le CAP de l'odométrie (gyro_odom.py) ;
+# l'accéléromètre, lui, n'est PAS utilisé : le firmware n'écrit aucun décalage
+# de calibration, et le capteur lit un roulis de 7.5° et une gravité 2 % trop
+# faible (mesuré le 12 sept. 2026, reproductible après redémarrage à plat).
+# Le gyromètre, en revanche, est excellent : 0.005 °/s de biais, soit 0.3° de
+# dérive par minute, et 0.1 °/s de bruit.
+imu:
+  frame: imu_link
+  # ATTENTION v2 : dans le nouvel export, imu_link est RETOURNÉ de 180° autour
+  # de x par rapport à la v1 — ses axes y et z pointent à l'envers. Un
+  # gyromètre dont le z est inversé fait tourner le cap dans le mauvais sens,
+  # et c'est le gyromètre qui porte le cap de l'odométrie. L'URDF décrit le
+  # montage ; il ne change pas ce que le firmware rapporte. Vérifier le SIGNE
+  # au banc (robot tourné à la main d'un quart de tour anti-horaire, le cap
+  # doit croître) avant tout essai en mouvement.
+  accel_lsb_per_m_s2: 100
+  gyro_lsb_per_deg_s: 16
+  # Correction d'échelle du cap gyroscopique. MESURÉE le 12 sept. 2026 en tours
+  # complets, LiDAR pour juge (corrélation des profils de scan avant/après) :
+  # le gyromètre sur-estime de 2.9 %, symétrique et répétable —
+  #   2 tours à 0.6 rad/s anti-horaire : 1.0299    (roues 0.9975)
+  #   3 tours à 0.9 rad/s anti-horaire : 1.0287    (roues 0.9984)
+  #   2 tours à 0.6 rad/s horaire      : 1.0286    (roues 1.0061)
+  # C'est l'erreur de sensibilité du BNO055, donnée à ±3 % par sa fiche. Zéro
+  # trou dans le flux IMU sur ces trois essais (I2C à 100 kHz).
+  gyro_scale: 0.9718
+
+# Seuils de la supervision (system_monitor.py), en unités du Pi 5. Le SoC
+# commence à se brider vers 85 °C ; 4.8 V est le seuil sous lequel le Pi 5
+# signale lui-même la sous-tension ; -75 dBm est la limite où CycloneDDS en
+# unicast commence à perdre des paquets sur ce WiFi.
+telemetry:
+  temp_warn_c: 75.0
+  temp_error_c: 85.0
+  rail_5v_warn_v: 4.80
+  cpu_warn_percent: 85.0
+  mem_warn_percent: 85.0
+  disk_warn_percent: 85.0
+  wifi_warn_dbm: -75.0
+  rate_warn_ratio: 0.8      # cadence capteur sous 80 % de l'attendu -> WARN, nulle -> ERROR
+
+# Contrat avec diffdrive_pico_firmware : cadence des trames S et délai du
+# chien de garde. L'interface matérielle doit émettre bien plus vite que ce
+# délai, y compris à l'arrêt.
+pico:
+  frame_rate_hz: 50
+  watchdog_ms: 300

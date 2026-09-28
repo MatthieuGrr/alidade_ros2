@@ -23,11 +23,11 @@ system_monitor:
     # ce compteur ne voyait PLUS RIEN passer alors que le flux tournait.
     # S'abonner au flux compresse marche mais force l'encodage JPEG en
     # permanence, un dixieme de coeur juste pour compter. Le camera_info, lui,
-    # est publie en continu par usb_cam (mesure : 15.0 Hz avec zero abonne)
+    # est publie en continu par le pilote (mesure : 15.0 Hz avec zero abonne)
     # pour quelques centaines d'octets, et s'arrete
     # exactement quand la camera s'arrete : c'est la vraie question de sante.
     watch:
       - "/scan|sensor_msgs/msg/LaserScan|${lidar.rotation_hz}"
-      - "/camera/camera_info|sensor_msgs/msg/CameraInfo|${camera.fps}|optional"
+      - "/camera/color/camera_info|sensor_msgs/msg/CameraInfo|${camera.fps}|optional"
       - "/imu/data_raw|sensor_msgs/msg/Imu|${pico.frame_rate_hz}"
       - "/odom|nav_msgs/msg/Odometry|50"

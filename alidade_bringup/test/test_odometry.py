@@ -101,3 +101,61 @@ def test_le_biais_ne_se_reestime_pas_en_mouvement():
     odom = run([(0.3, 0.0, math.radians(2.0))] * 200)
     assert odom.bias == 0.0
     assert math.degrees(odom.yaw) == pytest.approx(8.0, abs=0.1)
+
+
+# --------------------------------------------------- orientation de l'IMU
+# L'IMU de ce robot est montee A L'ENVERS. Ce doit rester une affaire d'URDF :
+# le noeud ramene le gyromètre dans le repere de la base par TF, et aucun signe
+# n'est code en dur. Ces tests fixent la convention, parce qu'une erreur de
+# signe ici ne se voit nulle part -- les distances restent justes et seul le
+# cap part du mauvais cote.
+
+import math
+
+from alidade_bringup.odometry import rotation_from_quaternion, yaw_rate
+
+IDENTITE = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+RETOURNEE = ((1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, -1.0))   # demi-tour autour de x
+
+
+def test_imu_a_plat_laisse_le_lacet_intact():
+    assert yaw_rate(IDENTITE, (0.1, -0.2, 0.7)) == pytest.approx(0.7)
+
+
+def test_imu_retournee_inverse_le_lacet():
+    """Le cas reel : z du capteur vers le bas, donc lacet de signe oppose."""
+    assert yaw_rate(RETOURNEE, (0.1, -0.2, 0.7)) == pytest.approx(-0.7)
+
+
+def test_une_rotation_en_lacet_ne_change_pas_le_lacet():
+    """Tourner l'IMU autour de la verticale ne doit rien changer a ce qu'on lit."""
+    for angle in (0.3, 1.5, -2.0, math.pi):
+        c, s = math.cos(angle), math.sin(angle)
+        rot = ((c, -s, 0.0), (s, c, 0.0), (0.0, 0.0, 1.0))
+        assert yaw_rate(rot, (0.4, -0.3, 0.55)) == pytest.approx(0.55)
+
+
+def test_imu_inclinee_melange_les_axes():
+    """Montee de travers, le lacet du robot n'est plus un seul axe du capteur."""
+    a = math.radians(30.0)
+    rot = ((math.cos(a), 0.0, math.sin(a)), (0.0, 1.0, 0.0),
+           (-math.sin(a), 0.0, math.cos(a)))         # inclinaison autour de y
+    attendu = -math.sin(a) * 0.9 + math.cos(a) * 0.2
+    assert yaw_rate(rot, (0.9, 0.0, 0.2)) == pytest.approx(attendu)
+
+
+def test_quaternion_identite():
+    for ligne, attendue in zip(rotation_from_quaternion(0.0, 0.0, 0.0, 1.0), IDENTITE):
+        assert ligne == pytest.approx(attendue)
+
+
+def test_quaternion_demi_tour_autour_de_x():
+    """C'est celui que TF renverra pour l'IMU de ce robot."""
+    for ligne, attendue in zip(rotation_from_quaternion(1.0, 0.0, 0.0, 0.0), RETOURNEE):
+        assert ligne == pytest.approx(attendue)
+
+
+def test_quaternion_puis_lacet_redonne_le_bon_signe():
+    """Chaine complete : quaternion TF -> matrice -> lacet, sur le cas reel."""
+    rot = rotation_from_quaternion(1.0, 0.0, 0.0, 0.0)
+    assert yaw_rate(rot, (0.0, 0.0, 0.5)) == pytest.approx(-0.5)

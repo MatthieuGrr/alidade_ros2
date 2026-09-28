@@ -32,7 +32,7 @@ alidade_ros2/
  │  └ imu_sensor_broadcaster ──/imu/data_raw ─┐          │
  │ gyro_odom (cap du gyro, distance des roues)◀┘──/odom + odom→base_footprint─▶ TF
  │ nav2 (6 nœuds) ──Twist──▶ cmd_vel_stamper ──TwistStamped──▶ diff_drive_controller
- │ usb_cam ──/camera/image_raw + camera_info──▶ aruco_tracker ──/aruco_detections + TF
+ │ realsense2_camera ──/camera/color/image_raw + camera_info──▶ aruco_tracker ──▶ TF
  │ system_monitor (Pi, cadences) ─┐
  │ PicoSystem, nav2 ──/diagnostics─┴─▶ diagnostic_aggregator ──/diagnostics_agg
  └──────────────────────────────────────────────────────┘
@@ -40,7 +40,7 @@ alidade_ros2/
 
 Frontière d'abstraction : le Pico ne connaît que des *ticks* et des *ticks/s*.
 Toute la cinématique (rayon, entraxe, counts par tour) vit ici, dans un seul
-fichier : `alidade_description/config/alidade_v1.yaml`.
+fichier : `alidade_description/config/alidade_v2.yaml`.
 
 ## Déploiement sur un Pi fraîchement installé
 
@@ -125,15 +125,9 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    Retenir la valeur qui reste la plus nette aux deux distances. Mesuré le
    11 sept. 2026 : optimum 35 à 30 cm, 25 à 51 cm, d'où `focus: 30`.
 
-   *Calibration*, sur le poste : le calibrateur a besoin d'un écran, et
-   l'image brute ne passe pas proprement en WiFi. On relaie donc le JPEG,
-   décodé localement, avec une qualité montée à 95 le temps de l'opération :
-   ```bash
-   ros2 param set /camera/usb_cam .image_raw.compressed.jpeg_quality 95   # sur le robot
-   ros2 run alidade_bringup camera_bench.py relay                         # poste, terminal 1
-   ros2 run camera_calibration cameracalibrator --size 8x6 --square 0.025 \
-       --no-service-check --ros-args -r image:=/calib/image               # poste, terminal 2
-   ```
+   *Calibration* : **il n'y en a plus**. Le D435i sort ses intrinsèques
+   d'usine et son pilote publie un `camera_info` calibré. Passer une mire
+   devant lui ne sert à rien, et il n'y a aucun fichier à maintenir.
    Couvrir toute l'image, **coins compris**, à plusieurs distances et avec
    des inclinaisons de 30 à 45°, en marquant un temps d'arrêt à chaque pose.
    Puis **CALIBRATE**, et **SAVE** (pas COMMIT, qui voudrait écrire dans le
@@ -341,7 +335,7 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
 | `nav` | false | nav2 (implique slam) |
 | `mock` | false | `mock_components` à la place du Pico, pour tester sans matériel |
 | `lidar` | true | démarre rplidar_ros |
-| `hardware_revision` | v1 | sélectionne `alidade_<rev>.yaml` |
+| `hardware_revision` | v2 | sélectionne `alidade_<rev>.yaml` |
 | `pico_port` | /dev/pico | port série du Pico |
 | `use_sim_time` | false | ne jamais le passer à true sur le robot réel |
 
@@ -423,7 +417,17 @@ de version dans les noms de paquets, de repères TF ou de topics.
 
 | Révision | Date | Contenu |
 |---|---|---|
-| v1 | 2026-09 | GA25-370 24 V 170 tr/min, réducteur 34:1, encodeurs 11 PPR (1496 counts/tour mesurés), roues Ø 64 mm, entraxe 0.1910 m, RPLIDAR C1, BNO055 en mode IMU, châssis 1.598 kg |
+| v2 | 2026-09 | Châssis 250 × 252 mm, roues Ø 100 mm, entraxe 225 mm (CAO), roulette Ø 50 à l'arrière, LiDAR en position haute dégagée, caméra RealSense non implémentée. Mêmes moteurs, réducteur, encodeurs, Pi, batterie, LiDAR et IMU qu'en v1 |
+
+La v1 (châssis 158 × 156, roues Ø 64, entraxe 0.1910, roulette avant, caméra
+C920 sur support incliné) décrivait un robot qui n'existe plus : elle a été
+supprimée, pas archivée.
+
+**La v2 n'est pas calibrée.** Son fichier porte une section `provisional` que
+`fix_urdf.py` rappelle à chaque compilation : rayon et entraxe sont des cotes
+CAO, les masses viennent de la v1, l'orientation du LiDAR et le signe du
+gyromètre restent à vérifier au banc. Une entrée se retire de cette liste quand
+la mesure est faite, jamais avant.
 
 Une révision aux roues différentes est un second YAML, sélectionné par
 `hardware_revision:=v2` ; le build produit un URDF corrigé par révision.
@@ -567,22 +571,21 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   Rien ne consomme `/imu/data_raw` aujourd'hui ; ne pas y brancher de fusion
   avant d'avoir corrigé le firmware (récupération du bus, drapeau de validité
   dans la trame S).
-- La C920 expose deux nœuds `video4linux` : la capture (`index` 0) et un flux
-  de métadonnées UVC (`index` 1) qui n'est pas une caméra. La règle udev ne
-  lie `/dev/camera` qu'au premier. Mise au point **fixe** obligatoire : en
-  autofocus la C920 change ses intrinsèques en permanence.
-- **usb_cam 0.8 règle la caméra sous des noms de commandes V4L2 périmés**
-  (`focus_auto`, `exposure_auto`, `white_balance_temperature_auto`), que les
-  noyaux 6.x ont renommés (`focus_automatic_continuous`, `auto_exposure`,
-  `white_balance_automatic`). Le journal dit « unknown control 'focus_auto' »
-  puis « Permission denied » sur `focus_absolute`, et la caméra reste en
-  **autofocus** : c'était le cas jusqu'au 11 sept. 2026, `autofocus: false`
-  n'avait jamais été appliqué. `camera.launch.py` pose donc lui-même
-  l'autofocus, la mise au point et l'anti-scintillement (50 Hz en France,
-  60 Hz d'usine) avant de démarrer le pilote. Les deux autres messages
-  « unknown control » restent, sans effet : exposition et balance des blancs
-  sont voulues automatiques, et c'est leur réglage d'usine. Vérifier avec
-  `v4l2-ctl -d /dev/camera --get-ctrl=focus_automatic_continuous,focus_absolute`.
+- **La caméra est une RealSense D435i, et elle ne se règle pas comme une
+  webcam.** Pas de commandes V4L2 à rejouer, pas de mise au point à figer, pas
+  de fichier de calibration : `librealsense` parle au capteur par son propre
+  protocole et le pilote publie des intrinsèques d'usine. Les pièges de la
+  C920 qui équipait la v1 (commandes V4L2 aux noms périmés, autofocus qui
+  changeait les intrinsèques en continu, nœud `video4linux` de métadonnées à
+  éviter) ont disparu avec elle ; ne les cherchez pas.
+- Le capteur veut un **port USB 3**. En USB 2 le pilote démarre, négocie un
+  profil dégradé et le dit à peine. `camera.launch.py` vérifie seulement qu'un
+  périphérique Intel est énuméré (identifiant fabricant `8086` lu dans `/sys`,
+  sans dépendre de `lsusb`) ; il ne juge pas la version du bus.
+- **`camera_name` doit valoir la même chose à trois endroits** : le paramètre
+  du pilote (`camera.yaml`), le nom du nœud (`camera.launch.py`) et le `name`
+  passé à la macro URDF (`alidade.urdf.xacro`). Sinon les images et les TF
+  décrivent deux capteurs différents, sans le moindre message.
 - **Ne pas remapper un nœud `image_transport`** : il applique les règles de
   façon incohérente. Au topic de base, DEUX FOIS : il résout le nom
   lui-même, puis `create_publisher` le résout encore, si bien qu'une règle
@@ -597,11 +600,8 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   `/camera/image/compressed`, n'affichait plus rien. D'où `camera.launch.py`
   sans aucun remappage : les noms par défaut du pilote sous `/camera` sont
   les bons.
-- En `mjpeg2rgb`, usb_cam décode le MJPEG de la C920 et `image_transport`
-  réencode un JPEG pour `/camera/image_raw/compressed` : le flux compressé coûte
-  du CPU, mais seulement quand quelqu'un le regarde. Le mode `mjpeg`
-  republierait le flux de la caméra sans réencodage, mais sans image brute
-  pour le détecteur.
+- `image_transport` réencode un JPEG pour `/camera/color/image_raw/compressed` :
+  le flux compressé coûte du CPU, mais seulement quand quelqu'un le regarde.
 - **L'accéléromètre du BNO055 n'est pas calibré et ne sert à rien tel quel.**
   Le firmware du Pico n'écrit aucun décalage (la calibration en six positions
   n'a jamais été faite, et l'état `CALIB_STAT` ne sort que sur l'UART du Pico,
@@ -640,7 +640,9 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   l'autre (7 à 9° de dérive). Fiable à partir de 0,45 rad/s et 5 cm/s : ce
   sont les planchers du docking. Le vrai remède est dans le firmware du
   Pico (compensation de zone morte).
-- **usb_cam date ses images d'environ 0,5 s trop tôt.** Âge apparent d'une
+- **Le pilote datait ses images d'environ 0,5 s trop tôt** (mesuré sur la
+  C920 ; à revérifier sur le D435i, la conclusion ci-dessous ne dépend pas
+  du modèle). Âge apparent d'une
   détection à sa réception : 790 ms, très stable ; latence réelle, mesurée
   par une rotation sur place (instant où l'odométrie voit le mouvement, puis
   la caméra) : environ 300 ms. Tout ce qui recale une détection sur le

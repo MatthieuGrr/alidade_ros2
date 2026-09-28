@@ -13,7 +13,10 @@ import yaml
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 
 PKG = Path(__file__).resolve().parent.parent
-REVISION = yaml.safe_load((PKG / 'config' / 'alidade_v1.yaml').read_text())
+# La revision de reference est la DERNIERE presente, pas un nom code en dur :
+# renommer une revision ne doit pas casser la collecte des tests.
+REVISION_FILE = sorted((PKG / 'config').glob('alidade_v*.yaml'))[-1]
+REVISION = yaml.safe_load(REVISION_FILE.read_text())
 
 
 def share_dir() -> Path:
@@ -68,8 +71,12 @@ def rotation(rpy):
             [-sp, cp * sr, cp * cr]]
 
 
-def orientation(robot, frame):
-    """Orientation de frame dans base_footprint, en remontant les joints."""
+def orientation(robot, frame, racine='base_footprint'):
+    """Orientation de frame dans la racine, en remontant les joints.
+
+    `racine` vaut 'root' sur un export Onshape brut, que fix_urdf.py n'a pas
+    encore renomme : c'est ce qui permet de comparer l'avant et l'apres.
+    """
     parents = {j.find('child').get('link'): j for j in robot.findall('joint')}
     rot = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
     while frame in parents:
@@ -80,20 +87,8 @@ def orientation(robot, frame):
         rot = [[sum(joint_rot[i][k] * rot[k][j] for k in range(3)) for j in range(3)]
                for i in range(3)]
         frame = joint.find('parent').get('link')
-    assert frame == 'base_footprint'
+    assert frame == racine, f'{frame} ne remonte pas a {racine}'
     return rot
-
-
-def test_camera_image_upright_and_looking_ahead():
-    """L'image du pilote est consommee telle quelle : son repere optique doit
-    decrire une camera droite. On le verifie sur les axes plutot que sur les
-    angles, pour qu'un export retourne ou un mount_rpy oublie se voie."""
-    rot = orientation(run_xacro(target='real'), REVISION['camera']['frame'])
-    axis = lambda i: [rot[r][i] for r in range(3)]
-    x, y, z = axis(0), axis(1), axis(2)
-    assert x[1] < -0.99, f'la droite de l image doit etre la droite du robot : x = {x}'
-    assert y[2] < -0.5, f'le bas de l image doit pointer vers le sol : y = {y}'
-    assert z[0] > 0.5 and z[2] < 0.0, f'l axe optique doit viser devant, vers le sol : z = {z}'
 
 
 def test_check_urdf():
@@ -145,24 +140,30 @@ def test_toutes_les_revisions_decrivent_les_memes_cles():
             f'manque {sorted(manquantes)}, en trop {sorted(en_trop)}')
 
 
-# Angle de conception du support de camera, en degres. `camera.mount_rpy` n'est
-# PAS cet angle : c'est la CORRECTION mesuree qu'on lui applique (v1 : support
-# dessine a 20 deg, plongee reelle mesuree a 23.5, d'ou mount_rpy = -3.52 deg).
-# C'est tout le travail de fix_urdf.py, et ce test verifie qu'il a bien lieu.
-SUPPORT_NOMINAL = 20.0
+def test_les_corrections_de_montage_sont_appliquees():
+    """Toute section declarant `frame` et `mount_rpy` doit voir sa correction.
 
-
-def test_la_camera_plonge_de_ce_que_la_revision_annonce():
-    """L'inclinaison decide de la portee sur une cible basse : au-dela de la
-    demi-ouverture verticale (20.4 deg), le marqueur sort du haut de l'image."""
+    La CAO place un capteur mais ignore ou tombe son repere de MESURE : le 0
+    d un LiDAR, l axe optique d une camera dans son boitier. Ces corrections se
+    declarent dans la revision, et leur oubli ne se voit nulle part ailleurs --
+    un demi-tour manquant sur le LiDAR fait cartographier la piece a l envers
+    sans le moindre message. On compare donc l export BRUT a l URDF corrige.
+    """
     for revision in revisions():
-        correction = math.degrees(yaml.safe_load(
-            (PKG / 'config' / f'alidade_{revision}.yaml').read_text())['camera']['mount_rpy'][0])
-        rot = orientation(run_xacro(target='real', hardware_revision=revision),
-                          REVISION['camera']['frame'])
-        # z du repere optique = axe de visee ; sa composante verticale donne la plongee.
-        plongee = math.degrees(math.asin(-rot[2][2]))
-        attendu = SUPPORT_NOMINAL - correction
-        assert abs(plongee - attendu) < 0.3, (
-            f'{revision} : plongee {plongee:.2f} deg, attendue {attendu:.2f} '
-            f'(support {SUPPORT_NOMINAL} deg, correction {correction:+.2f})')
+        cfg = yaml.safe_load((PKG / 'config' / f'alidade_{revision}.yaml').read_text())
+        brut = ET.parse(PKG / 'urdf' / cfg['onshape_export']).getroot()
+        corrige = run_xacro(target='real', hardware_revision=revision)
+        verifiees = 0
+        for section, spec in cfg.items():
+            if not isinstance(spec, dict) or 'frame' not in spec or 'mount_rpy' not in spec:
+                continue
+            avant = orientation(brut, spec['frame'], racine='root')
+            apres = orientation(corrige, spec['frame'])
+            attendu = [[sum(avant[i][k] * rotation(spec['mount_rpy'])[k][j] for k in range(3))
+                        for j in range(3)] for i in range(3)]
+            ecart = max(abs(apres[i][j] - attendu[i][j]) for i in range(3) for j in range(3))
+            assert ecart < 1e-6, (
+                f'{revision}/{section} : la correction mount_rpy de {spec["frame"]} '
+                f'n est pas appliquee (ecart {ecart:.2e})')
+            verifiees += 1
+        assert verifiees, f'{revision} : aucune correction de montage a verifier'

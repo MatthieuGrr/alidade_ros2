@@ -229,7 +229,7 @@ collision_monitor:
 # Localisation sur carte connue. Le nombre de particules est modeste : un
 # scan de 360 points a 10 Hz dans une piece de 6 m converge vite, et le Pi
 # n'a pas a porter 5000 particules. Les alpha (bruit d'odometrie) sont bas
-# parce que l'odometrie est calibree au LiDAR (alidade_v1.yaml) ; les monter
+# parce que l'odometrie est calibree au LiDAR (alidade_v2.yaml) ; les monter
 # si AMCL decroche en rotation rapide.
 amcl:
   ros__parameters:

@@ -79,6 +79,35 @@ class Odometry:
         return self.x, self.y, self.yaw
 
 
+def yaw_rate(rot: tuple[tuple[float, float, float], ...],
+             gyro: tuple[float, float, float]) -> float:
+    """Vitesse de lacet du ROBOT, a partir du gyromètre exprime dans SON repere.
+
+    `rot` est la rotation du repere de l'IMU vers celui de la base, telle que
+    TF la donne : w_base = rot . w_imu, et le lacet en est la composante z. Seule
+    la troisieme ligne sert.
+
+    Pourquoi ne pas lire `gyro.z` directement, ce que faisait ce noeud : parce
+    que l'IMU n'est pas forcement posee a plat et dans le bon sens. Sur ce robot
+    elle est montee A L'ENVERS -- l'URDF le decrit fidelement, et le z du capteur
+    pointe donc vers le bas. Lire z brut donnait un cap qui tournait a l'envers,
+    distances justes : mesure en simulation, commande +0.5 rad/s, robot tournant
+    bien de +26.3 deg, gyromètre annoncant -0.439 rad/s.
+
+    Passer par TF rend le montage transparent, dans les deux sens : une IMU
+    remontee autrement ne demande plus qu'un export correct, et aucun code ne
+    porte de signe code en dur.
+    """
+    return sum(rot[2][k] * gyro[k] for k in range(3))
+
+
+def rotation_from_quaternion(x: float, y: float, z: float, w: float):
+    """Matrice de rotation d'un quaternion TF, en lignes."""
+    return ((1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)),
+            (2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)),
+            (2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)))
+
+
 def usable(gyro: tuple[float, float, float] | None,
            accel: tuple[float, float, float] | None) -> bool:
     """Un echantillon IMU est exploitable s'il n'est pas une trame de zeros.

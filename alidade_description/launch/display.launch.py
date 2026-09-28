@@ -1,7 +1,7 @@
 """Affiche le modele dans rviz2 avec les sliders de joints, pour un controle visuel.
 
     ros2 launch alidade_description display.launch.py
-    ros2 launch alidade_description display.launch.py hardware_revision:=v1 target:=sim
+    ros2 launch alidade_description display.launch.py hardware_revision:=v2 target:=sim
 """
 from pathlib import Path
 
@@ -27,7 +27,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        DeclareLaunchArgument('hardware_revision', default_value='v1'),
+        DeclareLaunchArgument('hardware_revision', default_value='v2'),
         DeclareLaunchArgument('target', default_value='real'),
         DeclareLaunchArgument('gui', default_value='true'),
         DeclareLaunchArgument('rviz', default_value='true'),

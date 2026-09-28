@@ -69,7 +69,7 @@ def setup(context):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('hardware_revision', default_value='v1',
+        DeclareLaunchArgument('hardware_revision', default_value='v2',
                               description='selectionne alidade_<rev>.yaml'),
         DeclareLaunchArgument('mock', default_value='false',
                               description='mock_components a la place du Pico'),
@@ -82,7 +82,7 @@ def generate_launch_description():
         DeclareLaunchArgument('lidar', default_value='true',
                               description='demarre rplidar_ros'),
         DeclareLaunchArgument('camera', default_value='true',
-                              description='demarre la camera C920 si /dev/camera existe'),
+                              description='demarre la RealSense si elle est branchee'),
         DeclareLaunchArgument('aruco', default_value='true',
                               description='detection des marqueurs ArUco (avec la camera)'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),

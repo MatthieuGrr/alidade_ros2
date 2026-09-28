@@ -25,8 +25,8 @@
   <exec_depend>diff_drive_controller</exec_depend>
   <exec_depend>imu_sensor_broadcaster</exec_depend>
   <exec_depend>rplidar_ros</exec_depend>
-  <exec_depend>usb_cam</exec_depend>
   <exec_depend>image_transport_plugins</exec_depend>
+  <exec_depend>realsense2_camera</exec_depend>
   <exec_depend>aruco_opencv</exec_depend>
   <exec_depend>aruco_opencv_msgs</exec_depend>
   <exec_depend>visualization_msgs</exec_depend>

@@ -11,6 +11,11 @@ disputeraient la meme transformation. Son odometrie roues reste publiee et
 sert de temoin : comparer /odom et /diff_drive_controller/odom montre
 exactement ce que le gyromètre apporte.
 
+Le gyromètre est ramene dans le repere de la base par TF avant usage : l'IMU
+de ce robot est montee a l'envers, et lire `angular_velocity.z` brut donnait un
+cap qui tournait du mauvais cote. Le montage doit rester une affaire d'URDF,
+pas de signe code en dur ici.
+
 Le calcul est dans alidade_bringup/odometry.py, teste sans ROS ; ici on ne
 fait que brancher les topics, surveiller la fraicheur de l'IMU et publier.
 """
@@ -22,7 +27,7 @@ from nav_msgs.msg import Odometry as OdometryMsg
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Imu
-from tf2_ros import TransformBroadcaster
+from tf2_ros import Buffer, TransformBroadcaster, TransformException, TransformListener
 
 from alidade_bringup import odometry
 
@@ -47,7 +52,10 @@ class GyroOdom(Node):
         self.yaw_var = (p('yaw_std_deg', 0.3), p('yaw_std_fallback_deg', 5.0))
         self.xy_var = p('xy_std', 0.02) ** 2
 
-        self.imu = None          # (instant, w_z) du dernier echantillon exploitable
+        self.imu = None          # (instant, lacet) du dernier echantillon exploitable
+        self.rot = None          # rotation IMU -> base, constante, lue une fois dans TF
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
         self.last_stamp = None
         self.warned = 0
         self.pub = self.create_publisher(OdometryMsg, '/odom', 20)
@@ -58,10 +66,36 @@ class GyroOdom(Node):
             f'cap du gyromètre (echelle {gains.scale:.4f}), distance des roues ; '
             f'repli sur les roues au-dela de {self.imu_timeout * 1000:.0f} ms sans IMU')
 
+    def imu_rotation(self, frame: str):
+        """Rotation du repere de l'IMU vers la base, lue UNE fois dans TF.
+
+        Le joint qui porte l'IMU est fixe : la chercher a chaque echantillon
+        couterait 50 recherches par seconde pour une valeur constante. Tant
+        qu'elle n'est pas disponible, on ne se sert pas du gyromètre -- mieux
+        vaut le repli sur les roues, signale, qu'un cap oriente au hasard.
+        """
+        if self.rot is not None:
+            return self.rot
+        try:
+            tf = self.tf_buffer.lookup_transform(self.base_frame, frame, rclpy.time.Time())
+        except TransformException:
+            return None
+        q = tf.transform.rotation
+        self.rot = odometry.rotation_from_quaternion(q.x, q.y, q.z, q.w)
+        sens = 'a l endroit' if self.rot[2][2] > 0 else "A L ENVERS (z du capteur vers le bas)"
+        self.get_logger().info(
+            f'{frame} -> {self.base_frame} : IMU {sens} ; '
+            f'lacet = {self.rot[2][0]:+.3f} wx {self.rot[2][1]:+.3f} wy {self.rot[2][2]:+.3f} wz')
+        return self.rot
+
     def on_imu(self, msg):
         g, a = msg.angular_velocity, msg.linear_acceleration
-        if odometry.usable((g.x, g.y, g.z), (a.x, a.y, a.z)):
-            self.imu = (self.now(), g.z)
+        if not odometry.usable((g.x, g.y, g.z), (a.x, a.y, a.z)):
+            return
+        rot = self.imu_rotation(msg.header.frame_id)
+        if rot is None:
+            return
+        self.imu = (self.now(), odometry.yaw_rate(rot, (g.x, g.y, g.z)))
 
     def now(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9

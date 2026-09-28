@@ -89,7 +89,7 @@ def setup(context):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('hardware_revision', default_value='v1'),
+        DeclareLaunchArgument('hardware_revision', default_value='v2'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('autostart', default_value='true',
                               description='le lifecycle manager active nav2 seul ; false : gestionnaire de modes'),

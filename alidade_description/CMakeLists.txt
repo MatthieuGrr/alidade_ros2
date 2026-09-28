@@ -8,6 +8,11 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 # declare l'export Onshape qu'il corrige ; ajouter une revision, c'est ajouter
 # un YAML, sans toucher ici.
 file(GLOB REVISION_FILES ${CMAKE_CURRENT_SOURCE_DIR}/config/alidade_*.yaml)
+# Les exports Onshape en dependance, au glob : c'est la revision qui declare
+# lequel elle corrige (cle onshape_export), et coder un nom ici reintroduit le
+# couplage que la cle existe justement pour eviter -- un export renomme faisait
+# echouer le build sur un fichier absent, sans rapport visible avec la cause.
+file(GLOB ONSHAPE_EXPORTS ${CMAKE_CURRENT_SOURCE_DIR}/urdf/onshape/*.urdf)
 set(GENERATED_URDFS)
 foreach(revision_file ${REVISION_FILES})
   get_filename_component(stem ${revision_file} NAME_WE)
@@ -22,7 +27,7 @@ foreach(revision_file ${REVISION_FILES})
             --output ${generated}
     DEPENDS ${revision_file}
             ${CMAKE_CURRENT_SOURCE_DIR}/scripts/fix_urdf.py
-            ${CMAKE_CURRENT_SOURCE_DIR}/urdf/onshape/alidade.urdf
+            ${ONSHAPE_EXPORTS}
     COMMENT "Correction de l'export Onshape pour la revision ${stem}"
     VERBATIM
   )

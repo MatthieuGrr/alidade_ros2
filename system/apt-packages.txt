@@ -5,8 +5,12 @@ ros-jazzy-robot-state-publisher
 ros-jazzy-ros2-control
 ros-jazzy-ros2-controllers
 ros-jazzy-rplidar-ros
-# Camera C920 : pilote, transport compresse, mire
-ros-jazzy-usb-cam
+# Camera : transport compresse et calibration (la mire ne sert plus qu'au banc)
+# Camera Intel RealSense D435i. Le paquet -camera apporte le pilote (et
+# librealsense2 en dependance) ; -description apporte la macro URDF qui decrit
+# la geometrie interne du capteur, que le robot ET la simulation utilisent.
+ros-jazzy-realsense2-camera
+ros-jazzy-realsense2-description
 ros-jazzy-image-transport-plugins
 ros-jazzy-camera-calibration
 v4l-utils

@@ -81,8 +81,8 @@ def setup(context):
             '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
             '/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
             # Camera simulee : memes topics que le pilote du robot reel.
-            '/camera/image_raw@sensor_msgs/msg/Image[gz.msgs.Image',
-            '/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
+            '/camera/color/image_raw@sensor_msgs/msg/Image[gz.msgs.Image',
+            '/camera/color/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
         ],
         parameters=[{'use_sim_time': use_sim_time}],
     )
@@ -122,7 +122,7 @@ def setup(context):
 def generate_launch_description():
     default_world = str(Path(get_package_share_directory('alidade_sim')) / 'worlds' / 'arena.sdf')
     return LaunchDescription([
-        DeclareLaunchArgument('hardware_revision', default_value='v1'),
+        DeclareLaunchArgument('hardware_revision', default_value='v2'),
         DeclareLaunchArgument('slam', default_value='false'),
         DeclareLaunchArgument('nav', default_value='false',
                               description='pile autonome complete : SLAM, AMCL, nav2 et gestionnaire de modes'),

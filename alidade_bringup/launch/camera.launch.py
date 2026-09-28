@@ -1,14 +1,17 @@
-"""Camera C920 : acquisition et detection ArUco dans un conteneur.
+"""Camera Intel RealSense D435i : acquisition et detection ArUco dans un conteneur.
 
 Topics, sous /camera, aux noms par defaut du pilote :
-    image_raw, camera_info          image droite, repere camera.frame (non
-                                    rectifiee, d'ou raw) : le flux a consommer
-    image_raw/compressed            JPEG reencode par image_transport, pour l'interface
+    color/image_raw, color/camera_info   flux couleur, repere camera.frame
+    depth/image_rect_raw                 profondeur brute
+    aligned_depth_to_color/image_raw     profondeur recalee sur la couleur
 et, avec aruco:=true :
     /aruco_detections               identifiants et poses des marqueurs vus
     /aruco_tracker/debug            image annotee, publiee seulement si on la regarde
     TF marker_<id>                  un repere par marqueur, sous celui de l'image
     /cube/dock_pose, /cube/markers  face retenue et pose d'arret (cube_detector.py)
+
+Les memes noms servent en simulation (voir alidade_description/urdf/gazebo.xacro
+et le pont de alidade_sim) : le detecteur ne sait pas de quel cote il tourne.
 
 Les noeuds sont composes ensemble pour que les images circulent en
 intra-processus : une image 640x480 en rgb8 pese 900 ko, soit 13.8 Mo/s a
@@ -16,11 +19,21 @@ intra-processus : une image 640x480 en rgb8 pese 900 ko, soit 13.8 Mo/s a
 machine. Le conteneur est multi-thread, sinon la detection, plus lourde que
 le reste, retarderait l'acquisition.
 
-Sans /dev/camera (regle udev), le launch ne demarre rien et le dit : la camera
-n'est pas vitale, on ne veut ni respawn en boucle ni service en echec.
+CE QUI A DISPARU AVEC LA C920, et qu'il est inutile de chercher :
+
+  - les commandes V4L2. usb_cam 0.8 reglait l'autofocus et la frequence secteur
+    sous des noms que les noyaux 6.x ne connaissent plus, et il fallait les
+    rejouer a la main. librealsense parle a la camera par son propre protocole ;
+    il n'y a ni autofocus ni exposition a rattraper.
+  - le fichier de calibration. Le D435i sort ses intrinseques d'usine et le
+    pilote publie un camera_info calibre.
+  - la regle udev /dev/camera. Le capteur n'est pas un simple peripherique
+    video : on le cherche sur le bus USB par son identifiant fabricant.
+
+Sans camera branchee, le launch ne demarre rien et le dit : elle n'est pas
+vitale, on ne veut ni respawn en boucle ni service en echec.
 """
-import os
-import subprocess
+import glob
 
 import yaml
 from launch import LaunchDescription
@@ -30,40 +43,32 @@ from launch_ros.descriptions import ComposableNode
 
 from alidade_bringup import params
 
+INTEL = '8086'          # identifiant fabricant Intel, commun a toute la gamme RealSense
 
-def v4l2_controls(cam):
-    """Applique les commandes V4L2 qu'usb_cam 0.8 rate.
 
-    Le pilote les regle sous leurs anciens noms (focus_auto, exposure_auto,
-    white_balance_temperature_auto) que les noyaux 6.x ne connaissent plus :
-    « unknown control 'focus_auto' », puis « Permission denied » sur
-    focus_absolute puisque l'autofocus est reste actif. La camera faisait donc
-    sa mise au point en continu, et aucune calibration n'aurait tenu. Deux
-    appels : focus_absolute est refuse tant que l'autofocus tourne. usb_cam
-    reecrit ensuite focus_absolute a la meme valeur, sans dommage.
+def realsense_presente() -> bool:
+    """Une RealSense est-elle enumeree sur le bus USB ?
+
+    On lit /sys plutot que d'appeler lsusb : c'est le noyau qui repond, sans
+    dependre d'un paquet (usbutils) qui peut ne pas etre installe sur le Pi.
     """
-    controls = [('focus_automatic_continuous', int(cam['autofocus'])),
-                ('power_line_frequency', {50: 1, 60: 2}[cam['power_line_hz']])]
-    if not cam['autofocus']:
-        controls.append(('focus_absolute', cam['focus']))
-    errors = []
-    for name, value in controls:
-        out = subprocess.run(['v4l2-ctl', '-d', cam['device'], '-c', f'{name}={value}'],
-                             capture_output=True, text=True)
-        if out.returncode != 0 or out.stderr.strip():
-            errors.append(f'{name}={value} : {out.stderr.strip() or out.returncode}')
-    return errors
+    for chemin in glob.glob('/sys/bus/usb/devices/*/idVendor'):
+        try:
+            if open(chemin).read().strip().lower() == INTEL:
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def setup(context):
     hw = params.load_revision(context.launch_configurations['hardware_revision'])
     use_sim_time = params.as_bool(context.launch_configurations['use_sim_time'])
-    device = hw['camera']['device']
-    if not os.path.exists(device):
-        return [LogInfo(msg=f"camera : {device} absent, pas de camera (regle udev ? cable ?)")]
+    if not realsense_presente():
+        return [LogInfo(msg='camera : aucune RealSense sur le bus USB '
+                            '(cable ? alimentation ? port USB 3 ?)')]
 
     aruco = params.as_bool(context.launch_configurations['aruco'])
-    notes = [LogInfo(msg=f'camera : commande V4L2 refusee, {e}') for e in v4l2_controls(hw['camera'])]
     with open(params.render_config('camera.yaml', hw, use_sim_time)) as f:
         cfg = yaml.safe_load(f)
 
@@ -86,18 +91,21 @@ def setup(context):
                           output='screen',
                           parameters=[params.render_config('docking.yaml', hw, use_sim_time)]))
 
-    # AUCUN remappage : image_transport les applique de facon incoherente
-    # (deux fois au nom de base, jamais aux topics de ses plugins), voir README.
-    # Les noms par defaut, sous /camera, sont deja ceux qu'on veut.
-    return notes + extra + [ComposableNodeContainer(
+    # Le noeud porte le nom de la camera et vit a la racine : ses topics
+    # tombent donc sous /<camera.name>/, soit /camera/color/image_raw. Le
+    # meme `camera_name` est passe en parametre (camera.yaml) et a la macro
+    # URDF (alidade.urdf.xacro) : les trois doivent coincider, sinon les
+    # images et les TF decrivent deux capteurs differents sans rien signaler.
+    return extra + [ComposableNodeContainer(
         name='camera_container', namespace='camera',
         package='rclcpp_components', executable='component_container_mt',
         output='screen',
         composable_node_descriptions=[
             ComposableNode(
-                package='usb_cam', plugin='usb_cam::UsbCamNode', name='usb_cam',
-                namespace='camera',
-                parameters=[cfg['usb_cam']['ros__parameters']],
+                package='realsense2_camera',
+                plugin='realsense2_camera::RealSenseNodeFactory',
+                name=hw['camera']['name'], namespace='',
+                parameters=[cfg['camera']['ros__parameters']],
                 extra_arguments=[{'use_intra_process_comms': True}],
             ),
             *nodes,
@@ -107,7 +115,7 @@ def setup(context):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('hardware_revision', default_value='v1'),
+        DeclareLaunchArgument('hardware_revision', default_value='v2'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('aruco', default_value='true',
                               description='detection des marqueurs ArUco du cube'),

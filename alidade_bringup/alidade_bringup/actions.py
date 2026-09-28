@@ -49,7 +49,7 @@ def spawner(name: str, use_sim_time: bool, controller_ros_args: list | None = No
     )
 
 
-def controller_chain(use_sim_time: bool, revision: str = 'v1') -> tuple[list, Node]:
+def controller_chain(use_sim_time: bool, revision: str = 'v2') -> tuple[list, Node]:
     """Spawners enchaines dans l'ordre, plus l'odometrie ; retourne les actions
     et le dernier spawner, sur la fin duquel on peut accrocher la suite."""
     spawners = [spawner(name, use_sim_time, ros_args) for name, ros_args in CONTROLLERS]

@@ -19,6 +19,7 @@ install(PROGRAMS
   scripts/docking_server.py
   scripts/gyro_odom.py
   scripts/odom_calib.py
+  scripts/lidar_zero.py
   scripts/dock_campaign.py
   DESTINATION lib/${PROJECT_NAME})
 

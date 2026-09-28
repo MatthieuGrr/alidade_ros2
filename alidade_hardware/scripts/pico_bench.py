@@ -99,7 +99,10 @@ def load_revision(path: str | None) -> dict | None:
         return yaml.safe_load(Path(path).read_text())
     try:
         from ament_index_python.packages import get_package_share_directory
-        p = Path(get_package_share_directory('alidade_description')) / 'config' / 'alidade_v1.yaml'
+        # Derniere revision presente plutot qu'un nom code en dur : renommer
+        # une revision ne doit pas casser le banc.
+        d = Path(get_package_share_directory('alidade_description')) / 'config'
+        p = sorted(d.glob('alidade_v*.yaml'))[-1]
         return yaml.safe_load(p.read_text())
     except Exception:
         return None

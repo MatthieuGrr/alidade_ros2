@@ -16,8 +16,8 @@ materielle, verifie le centre de masse et les poses des reperes principaux,
 puis ecrit un URDF purement descriptif. Tout ce qui depend de la cible
 (ros2_control, capteurs Gazebo) est ajoute ensuite par le xacro.
 
-    fix_urdf.py --revision config/alidade_v1.yaml --urdf-dir urdf \
-                --package alidade_description --output generated/alidade_v1.urdf
+    fix_urdf.py --revision config/alidade_v2.yaml --urdf-dir urdf \
+                --package alidade_description --output generated/alidade_v2.urdf
 """
 
 from __future__ import annotations
@@ -291,6 +291,17 @@ def main() -> int:
         else:
             print(f"racine      '{rename['from']}' introuvable, rien a renommer")
 
+    # Renommages de links demandes par la revision. Sert quand un paquet tiers
+    # apporte un link du meme nom : la macro RealSense cree son propre
+    # `camera_link`, et l'homonymie qu'URDF tolere fait rejeter le SDF par
+    # Gazebo (« frame with name [...] already exists »). Le link CAO devient
+    # alors le point de FIXATION, et le paquet du capteur garde son nom.
+    for old, new in (config.get("rename_links") or {}).items():
+        hits = rename_link(robot, old, new)
+        if not hits:
+            raise SystemExit(f"rename_links : link '{old}' absent de l'export")
+        print(f"link        {old} -> {new}  ({hits} references)")
+
     for old, new in (config.get("rename_joints") or {}).items():
         state = "renomme" if rename_joint(robot, old, new) else "introuvable"
         print(f"joint       {old} -> {new}  ({state})")
@@ -371,6 +382,18 @@ def main() -> int:
     frames = config.get("frames")
     if frames:
         check_frames(tree, frames)
+
+    # Valeurs pas encore mesurees sur ce chassis. Les rappeler A CHAQUE build
+    # est le seul moyen qu'elles ne s'installent pas : une cote CAO recopiee
+    # dans une revision ne se distingue plus d'une mesure une fois qu'on a
+    # cesse de la regarder, et rien dans le comportement du robot ne dit
+    # laquelle des deux on a sous les yeux.
+    provisional = config.get("provisional") or {}
+    if provisional:
+        print(f"\nPROVISOIRE  {len(provisional)} valeur(s) non mesuree(s) sur ce chassis")
+        for cle in sorted(provisional):
+            motif = " ".join(str(provisional[cle]).split())
+            print(f"  - {cle} : {motif}")
 
     ET.indent(tree_xml, space="    ")
     args.output.parent.mkdir(parents=True, exist_ok=True)
