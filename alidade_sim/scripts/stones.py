@@ -38,14 +38,14 @@ from alidade_bringup import params, stone
 MAX_STONES = 40         # borne du balayage de `clear` : au-dela, ce n'est plus une scene
 
 
-def gz(service: str, reqtype: str, req: str, timeout_ms: int = 10000,
+def gz(service: str, reqtype: str, req: str, timeout_ms: int = 25000,
        tries: int = 2) -> tuple[bool, str]:
     """Appel de service gz, avec un delai GENEREUX et une seconde chance.
 
-    Le serveur repond en quelques millisecondes au repos, mais une simulation
-    chargee (rendu logiciel, physique, une trentaine de noeuds) le fait
-    depasser 3 s de temps en temps : deux scenarios d'une campagne perdus sur
-    un « Service call timed out » qui n'a rien a voir avec ce qu'on mesure.
+    Le serveur repond en quelques millisecondes au repos, mais le PREMIER
+    `create` d'une session charge le maillage et peut depasser 15 s ; une
+    simulation chargee (rendu logiciel, physique, une trentaine de noeuds)
+    allonge encore. Mesure : 10 s echouent, 20 s passent.
     """
     for attempt in range(tries):
         out = subprocess.run(
@@ -60,6 +60,23 @@ def gz(service: str, reqtype: str, req: str, timeout_ms: int = 10000,
     return False, text
 
 
+def monde_en_cours() -> str:
+    """Nom du monde que la simulation fait tourner, lu sur les sujets gz.
+
+    A NE PAS remplacer par une valeur par defaut en dur : un appel de service
+    sur un monde qui n'existe pas n'echoue pas, il EXPIRE. Le message parle
+    alors de delai et on cherche une lenteur pendant que la table reste vide --
+    trois campagnes ont ete perdues comme cela.
+    """
+    out = subprocess.run(['gz', 'topic', '-l'], capture_output=True, text=True,
+                         timeout=10).stdout
+    noms = {l.split('/')[2] for l in out.splitlines() if l.startswith('/world/')}
+    if len(noms) != 1:
+        raise SystemExit(f"monde indeterminable ({sorted(noms) or 'aucun'}) : "
+                         "precise --world")
+    return noms.pop()
+
+
 def parse(text: str):
     parts = text.split(',')
     if not 3 <= len(parts) <= 4:
@@ -71,6 +88,7 @@ def parse(text: str):
 def cmd_spawn(args):
     spec = stone.load(params.bringup_share() / 'config' / 'stone.yaml')
     model = f"{get_package_share_directory('alidade_sim')}/models/stone/model.sdf"
+    poses = 0
     for i, (x, y, yaw, level) in enumerate(args.stones, start=1):
         z = spec.stacked(level)     # centre de la boite = centre du marqueur lateral
         a = math.radians(yaw)
@@ -78,12 +96,15 @@ def cmd_spawn(args):
                f'pose: {{position: {{x: {x}, y: {y}, z: {z}}}, '
                f'orientation: {{z: {math.sin(a / 2)}, w: {math.cos(a / 2)}}}}}')
         ok, text = gz(f'/world/{args.world}/create', 'gz.msgs.EntityFactory', req)
+        poses += ok
         print(f'  {args.prefix}{i} : ({x:+.2f}, {y:+.2f}) cap {yaw:+.0f} deg, '
               f'niveau {level} (centre a {z * 1000:.0f} mm) -> '
               f'{"pose" if ok else "ECHEC : " + text}')
-        if not ok:
-            return 1
-    return 0
+    # On ne s'arrete PAS au premier echec : une campagne qui perd une pierre sur
+    # douze reste exploitable, alors qu'un abandon laisse la table VIDE sans
+    # que rien ne le signale -- trois essais ont ete mesures comme cela.
+    print(f'  {poses}/{len(args.stones)} pierres posees')
+    return 0 if poses else 1
 
 
 def cmd_clear(args):
@@ -107,7 +128,8 @@ def cmd_clear(args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--world', default='arena')
+    ap.add_argument('--world', default=None,
+                    help='par defaut, le monde que la simulation fait tourner')
     ap.add_argument('--prefix', default='stone_')
     sub = ap.add_subparsers(dest='command', required=True)
     s = sub.add_parser('spawn', help='pose des pierres')
@@ -116,6 +138,7 @@ def main():
     c = sub.add_parser('clear', help='retire toutes les pierres')
     c.set_defaults(func=cmd_clear)
     args = ap.parse_args()
+    args.world = args.world or monde_en_cours()
     return args.func(args)
 
 

@@ -108,7 +108,16 @@ def test_check_urdf():
 # le support de camera. Sans ce controle, une calibration d'odometrie ou une
 # masse reportee dans un seul des deux fichiers passerait inapercue -- c'est le
 # prix a payer pour deux revisions, et il se paie une fois ici.
-V2_DIFFERENCES = {'revision', 'camera.mount_rpy'}
+DIFFERENCES = {
+    # Chaque revision derive de la precedente et ne doit en differer que par ce
+    # qui est liste ici. Sans ce controle, une calibration d'odometrie reportee
+    # dans un seul fichier passerait inapercue -- c'est le prix de plusieurs
+    # revisions, et il se paie une fois.
+    ('v1', 'v2'): ({'revision', 'camera.mount_rpy'}, set()),
+    ('v2', 'v3'): ({'revision', 'frames.expected.laser', 'lidar.mount_rpy',
+                    'lidar.samples_per_rev'},
+                   {'lidar.mount_xyz', 'lidar.fov_min', 'lidar.fov_max'}),
+}
 
 
 def flatten(node, prefix=''):
@@ -119,25 +128,54 @@ def flatten(node, prefix=''):
         yield prefix, node
 
 
-def test_v2_ne_differe_de_v1_que_par_le_support_camera():
-    v1 = dict(flatten(REVISION))
-    v2 = dict(flatten(yaml.safe_load((PKG / 'config' / 'alidade_v2.yaml').read_text())))
-    assert set(v1) == set(v2), 'les deux revisions ne decrivent pas les memes cles'
-    differing = {k for k in v1 if v1[k] != v2[k]}
-    # mount_rpy est une liste : flatten la reduit a mount_rpy.0, .1, .2
-    differing = {k.rsplit('.', 1)[0] if k.rsplit('.', 1)[-1].isdigit() else k for k in differing}
-    assert differing == V2_DIFFERENCES, (
-        f'v1 et v2 different sur {sorted(differing)} ; attendu {sorted(V2_DIFFERENCES)}. '
-        'Reporter la mesure dans les deux fichiers, ou mettre a jour V2_DIFFERENCES.')
+def revision(nom):
+    plat = dict(flatten(yaml.safe_load((PKG / 'config' / f'alidade_{nom}.yaml').read_text())))
+    # mount_rpy et les poses sont des listes : flatten les reduit a cle.0, .1...
+    groupe = {}
+    for k, v in plat.items():
+        tete, _, fin = k.rpartition('.')
+        groupe.setdefault(tete if fin.isdigit() else k, []).append(v)
+    return groupe
+
+
+@pytest.mark.parametrize('avant,apres', list(DIFFERENCES))
+def test_une_revision_ne_differe_que_de_ce_qui_est_declare(avant, apres):
+    attendu, nouvelles = DIFFERENCES[(avant, apres)]
+    a, b = revision(avant), revision(apres)
+    assert set(b) - set(a) == nouvelles, f'{apres} : cles ajoutees inattendues'
+    assert set(a) - set(b) == set(), f'{apres} : cles disparues'
+    differentes = {k for k in a if a[k] != b[k]}
+    assert differentes == attendu, (
+        f'{avant} -> {apres} different sur {sorted(differentes)} ; attendu {sorted(attendu)}. '
+        'Reporter la mesure dans les deux fichiers, ou mettre a jour DIFFERENCES.')
 
 
 def test_v2_plonge_de_quinze_degres():
     """L'inclinaison decide de la portee sur les pierres : au-dela de 20.4 deg
     (demi-ouverture verticale), le marqueur d'une pierre couchee sort du haut
     de l'image. Voir alidade_bringup/stone.py et le README."""
-    for revision, expected in (('v1', 23.5), ('v2', 15.0)):
-        rot = orientation(run_xacro(target='real', hardware_revision=revision),
+    for rev, expected in (('v1', 23.5), ('v2', 15.0), ('v3', 15.0)):
+        rot = orientation(run_xacro(target='real', hardware_revision=rev),
                           REVISION['camera']['frame'])
         # z du repere optique = axe de visee ; sa composante verticale donne la plongee.
         plongee = math.degrees(math.asin(-rot[2][2]))
-        assert abs(plongee - expected) < 0.3, f'{revision} : plongee {plongee:.2f} deg'
+        assert abs(plongee - expected) < 0.3, f'{rev} : plongee {plongee:.2f} deg'
+
+
+def test_v3_voit_les_bordures_de_la_table():
+    """Le plan de mesure doit passer SOUS les bordures de 70 mm, sans quoi toute
+    la revision v3 ne sert a rien. Le plan est a 29.8 mm au-dessus de la base du
+    C1 (fiche Slamtec) : c'est la cote qui rend la manoeuvre possible."""
+    v3 = yaml.safe_load((PKG / 'config' / 'alidade_v3.yaml').read_text())
+    z = v3['frames']['expected']['laser'][2]
+    assert z < 0.070, f'plan de mesure a {z*1000:.0f} mm : au-dessus de la bordure'
+    assert z - 0.0298 > 0.005, 'la base du C1 passerait sous le plateau'
+    x = v3['frames']['expected']['laser'][0]
+    assert x > v3['kinematics']['wheel_separation'] * 0, ''
+    # En avant des roues, dont le sommet est a 2 x le rayon.
+    assert z < 2 * v3['kinematics']['wheel_radius'] or x > 0.10, \
+        'a cette hauteur le capteur doit etre en avant des roues'
+    assert math.degrees(v3['lidar']['fov_max'] - v3['lidar']['fov_min']) == pytest.approx(180.0)
+    # 5000 points/s a 10 Hz : le champ reduit n'en cree aucun.
+    assert v3['lidar']['samples_per_rev'] == pytest.approx(
+        5000 / v3['lidar']['rotation_hz'] * 180 / 360)

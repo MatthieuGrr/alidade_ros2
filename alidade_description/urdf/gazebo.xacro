@@ -47,11 +47,14 @@
         <gz_frame_id>${lidar['frame']}</gz_frame_id>
         <lidar>
           <scan>
+            <!-- Champ limite au besoin : un LiDAR descendu sous les roues a
+                 l'avant du robot ne voit de toute facon rien derriere elles.
+                 Par defaut le tour complet, comme sur le capteur reel. -->
             <horizontal>
               <samples>${lidar['samples_per_rev']}</samples>
               <resolution>1</resolution>
-              <min_angle>${-pi}</min_angle>
-              <max_angle>${pi}</max_angle>
+              <min_angle>${lidar['fov_min'] if 'fov_min' in lidar else -pi}</min_angle>
+              <max_angle>${lidar['fov_max'] if 'fov_max' in lidar else pi}</max_angle>
             </horizontal>
           </scan>
           <range>
