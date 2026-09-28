@@ -18,9 +18,9 @@ Regles :
     milieu d'une cartographie et y revenir sans perdre la carte ;
   - EXPLORATION = MAPPING plus l'explorateur de frontieres, qui pousse ses
     propres buts nav2 ; on l'arrete avant de quitter le mode ;
-  - DOCKING approche le cube jusqu'a un ecart fixe (cube_docking.py).
-    Il ne demarre que cube VU : pas de recherche, l'operateur amene le robot a
-    portee. Il ne suit que l'odometrie et la pose du cube, et preserve donc la
+  - DOCKING approche le cube jusqu'a un ecart fixe (docking_server.py).
+    Il ne demarre que cube VU : pas de recherche, l'operateur amene le robot
+    a portee. Il ne suit que l'odometrie et la pose vue, et preserve donc la
     localisation en cours comme TELEOP. Redemander DOCKING une fois arrete
     relance une approche ; on annule l'approche avant de quitter le mode.
 """
@@ -52,7 +52,7 @@ class Context:
     current_map: str = ''
     slam_active: bool = False
     amcl_active: bool = False
-    cube_visible: bool = False     # pose d'arret recue il y a moins d'une seconde
+    cube_visible: bool = False    # pose d'arret recue il y a moins d'une seconde
     docking_active: bool = False   # une approche est en cours
 
 

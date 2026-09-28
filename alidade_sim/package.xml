@@ -8,6 +8,7 @@
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+  <test_depend>ament_cmake_pytest</test_depend>
 
   <exec_depend>alidade_description</exec_depend>
   <exec_depend>alidade_bringup</exec_depend>
@@ -17,6 +18,9 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>aruco_opencv</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

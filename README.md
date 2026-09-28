@@ -297,7 +297,7 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
      d'arrêt de `base_footprint` devant la face visée (`/cube/dock_pose`,
      `/cube/center`, marqueurs `/cube/markers` pour Vizanti : cube orange,
      rouge si ses faces se contredisent, flèche verte à la pose d'arrêt) ;
-   - `cube_docking.py` : actions `/dock_robot` et `/undock_robot` (types
+   - `docking_server.py` : actions `/dock_robot` et `/undock_robot` (types
      `nav2_msgs`). Mise en place à l'odométrie dans l'axe de la face, 20 cm
      en retrait, si le robot en est trop loin ; puis approche asservie sur la
      vision jusqu'à la **ligne** d'arrêt, les 4 derniers centimètres à
@@ -346,8 +346,23 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
 | `use_sim_time` | false | ne jamais le passer à true sur le robot réel |
 
 `sim.launch.py` prend les mêmes `slam`, `nav`, `hardware_revision`, plus
-`headless` et `world`. La même commande produit le même comportement des deux
-côtés : un seul jeu de fichiers de configuration, rendu au lancement.
+`headless`, `world`, `aruco` et le point d'apparition `spawn_x` / `spawn_y` /
+`spawn_yaw`. La même commande produit le même comportement des deux côtés :
+un seul jeu de fichiers de configuration, rendu au lancement.
+
+```bash
+ros2 launch alidade_sim sim.launch.py nav:=true spawn_x:=1.0 spawn_yaw:=1.5708
+```
+
+La détection ArUco (`aruco:=true`, par défaut) tourne en nœud séparé en
+simulation, là où le robot la compose dans le conteneur de la caméra : le pont
+Gazebo est déjà un processus à part, il n'y a pas d'intra-processus à gagner.
+Les images transitent en DDS local, en RELIABLE — jamais `best_effort`, où la
+fragmentation d'une image de 900 ko perdrait tout.
+
+L'image simulée porte un **bruit gaussien** (`camera.sim_noise_stddev`, 0.006).
+Sans lui le détecteur ArUco ne rate jamais un marqueur, et le taux de détection
+mesure le rendu plutôt que la chaîne.
 
 ## Poste de développement
 
@@ -424,6 +439,13 @@ collision, URI `package://`. Il vérifie le centre de masse (y = −0.1 mm) et
 les poses des repères principaux contre la révision, et fait échouer le build
 au-delà d'un millimètre.
 
+Deux corrections se déclarent dans la révision plutôt que dans l'export :
+`<section>.mount_rpy` tourne un repère sur le joint qui le porte, et
+`<section>.mount_xyz` le déplace, tous deux dans le repère du parent. C'est là
+que vit l'écart entre la pièce dessinée et la pièce montée — le support de
+caméra est dessiné à 20°, mesuré à 23.5°, d'où `camera.mount_rpy` négatif. La
+valeur corrigée est ensuite revérifiée contre `frames.expected`.
+
 **Réexporter depuis Onshape** : l'exportateur vide le dossier `urdf/` qu'on
 lui désigne (les trois xacro écrits à la main disparaissent) et y écrit
 `main_assembly.urdf`. Après chaque export :
@@ -440,6 +462,9 @@ dans rviz.
 Le xacro `alidade.urdf.xacro` inclut cet URDF et ajoute ce qui dépend de la
 cible : plugin ros2_control (Pico, mock ou Gazebo), et en simulation le
 LiDAR `gpu_lidar` aux valeurs de la datasheet du C1, l'IMU et les frictions.
+Le champ du LiDAR simulé se restreint au besoin par `lidar.fov_min` /
+`lidar.fov_max` dans la révision ; sans eux, le tour complet, comme sur le
+capteur réel.
 
 `controllers.yaml`, `nav2.yaml`, `slam.yaml`, `rplidar.yaml` sont des gabarits
 dont les marqueurs `${section.cle}` sont remplis au lancement depuis la
@@ -480,6 +505,10 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
 
 ## Pièges connus
 
+- Un appel de service `gz` sur un monde qui **n'existe pas** n'échoue pas : il
+  **expire**. Le message parle alors de délai et on cherche une lenteur pendant
+  que la scène reste vide. Vérifier le nom du monde (`gz topic -l`) avant de
+  soupçonner la charge — trois campagnes d'essais ont tourné à vide comme cela.
 - `diff_drive_controller` (Jazzy) n'accepte que du `TwistStamped` ; nav2 sort
   du `Twist`. `cmd_vel_stamper.py` fait le joint. `teleop_twist_keyboard`
   prend `-p stamped:=true`.

@@ -219,6 +219,14 @@ camera:
   # la calibration, 2·atan(w/2fx) avec fx = 644.5 px (52.8°). À recalculer
   # avec toute nouvelle calibration.
   sim_horizontal_fov: 0.922
+  # Simulation seulement : bruit gaussien de l'image, en fraction de la pleine
+  # échelle (0.006 ≈ 1.5 niveaux sur 255). Une image de synthèse parfaite donne
+  # un taux de détection ArUco irréaliste — le détecteur ne rate jamais un
+  # marqueur qu'aucun capteur réel ne rendrait aussi net. Même écart-type que
+  # le banc hors ligne (`aruco_bench.py --noise`), pour que les deux
+  # restent comparables. La distorsion, elle, ne se simule pas : le camera_info
+  # de Gazebo sort d'un FOV, sans coefficients.
+  sim_noise_stddev: 0.006
 
 # BNO055 en mode IMU (6 axes, magnétomètre coupé). Le Pico transmet les
 # entiers bruts ; la conversion SI se fait côté Pi avec ces facteurs

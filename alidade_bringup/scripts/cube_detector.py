@@ -4,7 +4,7 @@
     /aruco_detections  ->  /cube/pose       (PoseStamped, base_footprint)
                            /cube/dock_pose  (PoseStamped, base_footprint : ou
                                              s'arreter devant le cube, pour
-                                             cube_docking)
+                                             docking_server)
                            /cube/center     (PointStamped, base_footprint :
                                              centre du cube, publie juste avant
                                              la pose d'arret)

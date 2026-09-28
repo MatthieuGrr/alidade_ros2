@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Docking sur le cube : actions /dock_robot et /undock_robot (nav2_msgs).
+"""Docking sur une cible vue : actions /dock_robot et /undock_robot (nav2_msgs).
 
     /cube/dock_pose, /cube/center (base_footprint) --+
     /odom (roues + gyromètre) -----------------------+--> /cmd_vel_nav
@@ -15,8 +15,12 @@ l'instant de l'IMAGE, prise dans un historique de l'odometrie : sans cela,
 les ~300 ms de latence de la detection deplaceraient la cible d'autant de
 chemin parcouru. Cet instant est l'heure de RECEPTION moins la latence
 mesuree (detection_latency), et non l'horodatage de l'image, qu'usb_cam
-decale d'environ 0.5 s. Le cube etant immobile, la cible est ensuite lissee
+decale d'environ 0.5 s. La cible etant immobile, elle est ensuite lissee
 dans odom, centre et cap separement (docking.TargetFilter explique pourquoi).
+
+Ce noeud ne sait RIEN de ce qu'il aborde : il recoit un centre et une pose
+d'arret, et il y va. Reconnaitre la cible est le travail du detecteur
+(cube_detector.py) ; changer de cible ne demande pas d'y toucher.
 """
 import math
 import threading
@@ -59,9 +63,9 @@ class Failure(Exception):
         self.code = code
 
 
-class CubeDocking(Node):
+class DockingServer(Node):
     def __init__(self):
-        super().__init__('cube_docking')
+        super().__init__('docking_server')
         p = lambda name, default: self.declare_parameter(name, default).value
         self.g = docking.Gains(
             staging=p('staging', 0.20), v_max=p('v_max', 0.08), v_min=p('v_min', 0.05),
@@ -82,7 +86,7 @@ class CubeDocking(Node):
 
         self.lock = threading.Lock()
         self.odom = deque(maxlen=150)          # (ns, Pose2D), 3 s a 50 Hz
-        self.centre = None                     # (x, y) du cube dans base_footprint, dernier recu
+        self.centre = None                     # (x, y) de la cible dans base_footprint, dernier recu
         self.seen_at = None                    # derniere detection, horloge ROS
         # Delais sur l'horloge ROS, pas sur l'horloge murale : en simulation,
         # le temps simule peut aller cinq fois moins vite.
@@ -142,7 +146,7 @@ class CubeDocking(Node):
         now = self.now()
         with self.lock:
             if self.seen_at is None or now - self.seen_at > 2 * self.detection_timeout:
-                self.filter.reset()     # cube perdu longtemps : on repart de zero
+                self.filter.reset()     # cible perdue longtemps : on repart de zero
             self.filter.update((c.x, c.y), docking.wrap(robot.yaw + dock.yaw), lever)
             self.seen_at = now
 
@@ -208,8 +212,8 @@ class CubeDocking(Node):
                     try:
                         self.dock_once(handle, feedback, retry=attempt > 0)
                     except Failure as why:
-                        # Cube perdu : on repart en mise en place sur sa derniere
-                        # pose connue, d'ou il redevient visible.
+                        # Cible perdue : on repart en mise en place sur sa
+                        # derniere pose connue, d'ou elle redevient visible.
                         if why.code != RES.FAILED_TO_DETECT_DOCK or attempt == self.max_retries:
                             raise
                         self.stop()
@@ -244,11 +248,11 @@ class CubeDocking(Node):
     def dock_once(self, handle, feedback, retry: bool):
         target = self.fresh_target() or (self.last_target() if retry else None)
         if target is None:
-            raise Failure(RES.FAILED_TO_DETECT_DOCK, 'cube non vu')
+            raise Failure(RES.FAILED_TO_DETECT_DOCK, 'cible non vue')
         # Mise en place, refaite tant que la cible vue a l'arrivee ne correspond
         # plus : partie de loin, elle vise une pose estimee a un metre (cap a
-        # +-10 deg), et le cube, hors du champ pendant les pivots, peut
-        # reapparaitre sous une autre face. Constate sur le robot : sans cette
+        # +-10 deg), et la cible, hors du champ pendant les pivots, peut
+        # reapparaitre autrement. Constate sur le robot : sans cette
         # reprise, l'approche visait une cible a 17 cm et 58 deg, et le docking
         # coutait deux reprises et 32 s.
         for passes in range(1 + self.max_restage):
@@ -259,11 +263,11 @@ class CubeDocking(Node):
             if passes:
                 self.get_logger().info(f'cible changee apres la mise en place, nouvelle mise en place ({passes})')
             self.stage(handle, target.ahead(-self.g.staging), feedback)
-            # Le cube a pu sortir du champ pendant les pivots : on attend qu'il
-            # revienne avant de juger la mise en place.
+            # La cible a pu sortir du champ pendant les pivots : on attend
+            # qu'elle revienne avant de juger la mise en place.
             feedback.state = FB.INITIAL_PERCEPTION
             handle.publish_feedback(feedback)
-            self.loop(handle, lambda: self.fresh_target() is not None, 3.0, 'cube non revu apres la mise en place')
+            self.loop(handle, lambda: self.fresh_target() is not None, 3.0, 'cible non revue apres la mise en place')
             target = self.fresh_target()
         feedback.state = FB.CONTROLLING
 
@@ -272,15 +276,15 @@ class CubeDocking(Node):
         def step():
             robot, target = self.robot_at(), self.fresh_target()
             if target is None:
-                # De pres, le bas de l'image coupe le cube : on finit sur la
-                # derniere cible connue si la ligne d'arret est a portee.
+                # De pres, le bas de l'image coupe la cible : on finit sur sa
+                # derniere pose connue si la ligne d'arret est a portee.
                 target = self.last_target()
                 if target is None or not docking.may_finish_blind(robot, target, self.g):
-                    raise Failure(RES.FAILED_TO_DETECT_DOCK, 'cube perdu pendant l approche')
+                    raise Failure(RES.FAILED_TO_DETECT_DOCK, 'cible perdue pendant l approche')
                 if blind['since'] is None:
                     blind['since'] = docking.errors(robot, target)[0]
                     self.get_logger().info(
-                        f'cube hors champ a {-blind["since"] * 100:.1f} cm de la ligne : fin a l odometrie')
+                        f'cible hors champ a {-blind["since"] * 100:.1f} cm de la ligne : fin a l odometrie')
             v, w, done = docking.approach(robot, target, self.g)
             self.drive(v, w)
             handle.publish_feedback(feedback)
@@ -311,7 +315,7 @@ class CubeDocking(Node):
 
 def main():
     rclpy.init()
-    node = CubeDocking()
+    node = DockingServer()
     executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
     try:

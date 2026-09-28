@@ -119,6 +119,24 @@ def rpy_from_rotation(rot: list[list[float]]) -> list[float]:
     ]
 
 
+def translate_frame(robot: ET.Element, child: str, extra: list[float]) -> str:
+    """Deplace un repere sur le joint qui le porte, dans le repere du PARENT.
+
+    Pendant de rotate_frame, pour le cas ou le capteur n'est pas la ou la CAO
+    le pose : un LiDAR descendu sur un berceau bas, par exemple. Le decalage
+    etant dans le repere du parent, il se lit comme une cote de plan. Les poses
+    de frames.expected doivent suivre, et c'est voulu : un deplacement de
+    capteur qu'on oublierait d'y reporter fait echouer le build."""
+    for joint in robot.findall("joint"):
+        if joint.find("child").get("link") != child:
+            continue
+        origin = joint.find("origin")
+        xyz = [float(v) + float(e) for v, e in zip(origin.get("xyz").split(), extra)]
+        origin.set("xyz", " ".join(f"{v:.17g}" for v in xyz))
+        return joint.get("name")
+    raise SystemExit(f"aucun joint ne porte le link '{child}'")
+
+
 def rotate_frame(robot: ET.Element, child: str, extra: list[float]) -> str:
     """Compose une rotation dans le repere d'un link, sur le joint qui le porte.
 
@@ -293,11 +311,16 @@ def main() -> int:
     # Toute section de capteur portant 'frame' et 'mount_rpy' decrit un montage
     # qui differe de l'orientation posee par la CAO (lidar, camera...).
     for section, spec in config.items():
-        if not isinstance(spec, dict) or "mount_rpy" not in spec or "frame" not in spec:
+        if not isinstance(spec, dict) or "frame" not in spec:
             continue
-        joint = rotate_frame(robot, spec["frame"], [float(v) for v in spec["mount_rpy"]])
-        degres = ", ".join(f"{math.degrees(float(v)):+.1f}" for v in spec["mount_rpy"])
-        print(f"repere      {spec['frame']} tourne de ({degres}) deg sur {joint}  [{section}]")
+        if "mount_xyz" in spec:
+            joint = translate_frame(robot, spec["frame"], [float(v) for v in spec["mount_xyz"]])
+            mm = ", ".join(f"{float(v) * 1000:+.1f}" for v in spec["mount_xyz"])
+            print(f"repere      {spec['frame']} deplace de ({mm}) mm sur {joint}  [{section}]")
+        if "mount_rpy" in spec:
+            joint = rotate_frame(robot, spec["frame"], [float(v) for v in spec["mount_rpy"]])
+            degres = ", ".join(f"{math.degrees(float(v)):+.1f}" for v in spec["mount_rpy"])
+            print(f"repere      {spec['frame']} tourne de ({degres}) deg sur {joint}  [{section}]")
     print()
 
     links = {link.get("name"): link for link in robot.findall("link")}

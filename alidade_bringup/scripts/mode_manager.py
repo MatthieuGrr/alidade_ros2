@@ -10,7 +10,7 @@ Publie /robot/state (RobotState, 2 Hz, transient_local).
 
 Il pilote par cycle de vie slam_toolbox, map_server, amcl et map_saver (tous
 lances 'unconfigured' par les launch), nav2 a travers son lifecycle manager
-(STARTUP / PAUSE), et le docking par les actions de cube_docking. La logique des transitions est dans
+(STARTUP / PAUSE), et le docking par les actions de docking_server. La logique des transitions est dans
 alidade_bringup/modes.py, testee sans ROS ; ici on execute les etapes, on
 observe (TF, AMCL, nav2, diagnostics) et on publie.
 
@@ -60,8 +60,8 @@ from alidade_msgs.srv import ListMaps, SaveMap as SaveMapSrv, SetMode
 LATCHED = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
                      durability=DurabilityPolicy.TRANSIENT_LOCAL)
 ACTIVE_GOAL = {GoalStatus.STATUS_ACCEPTED, GoalStatus.STATUS_EXECUTING, GoalStatus.STATUS_CANCELING}
-DOCK_TYPE = 'cube'                      # informatif : cube_docking ne sert que ce dock
-CUBE_FRESH_S = 1.0                      # pose d'arret plus vieille : cube considere perdu
+DOCK_TYPE = 'cube'                     # informatif : docking_server ne sert que ce dock
+CUBE_FRESH_S = 1.0                     # pose d'arret plus vieille : cube considere perdu
 DOCK_FEEDBACK = {DockRobot.Feedback.NAV_TO_STAGING_POSE: 'mise en place dans l axe',
                  DockRobot.Feedback.INITIAL_PERCEPTION: 'attente du cube',
                  DockRobot.Feedback.CONTROLLING: 'approche du cube'}
@@ -109,7 +109,7 @@ class ModeManager(Node):
         self.health = DiagnosticStatus.STALE
         self.errors: list[str] = []
         self.sensors = {'lidar': False, 'camera': False, 'imu': False, 'pico': False}
-        self.cube_seen = 0.0           # derniere pose d'arret recue (monotone)
+        self.cube_seen = 0.0          # derniere pose d'arret recue (monotone)
         self.dock_pose = None
         self.dock_goal = None          # poignee de l'action de docking ou de degagement en cours
 
@@ -342,7 +342,7 @@ class ModeManager(Node):
     # ------------------------------------------------------------------ docking
     def send_goal(self, client, goal, what: str, feedback=None):
         if not client.wait_for_server(timeout_sec=5.0):
-            raise Step(f'{what} : cube_docking absent (lance par nav.launch.py)')
+            raise Step(f'{what} : docking_server absent (lance par nav.launch.py)')
         future = client.send_goal_async(goal, feedback_callback=feedback)
         deadline = time.monotonic() + 5.0
         while not future.done():

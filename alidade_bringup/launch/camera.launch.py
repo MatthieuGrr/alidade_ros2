@@ -8,7 +8,7 @@ et, avec aruco:=true :
     /aruco_detections               identifiants et poses des marqueurs vus
     /aruco_tracker/debug            image annotee, publiee seulement si on la regarde
     TF marker_<id>                  un repere par marqueur, sous celui de l'image
-    /cube/pose, /cube/markers       pose du cube depuis ses faces vues (cube_detector.py)
+    /cube/dock_pose, /cube/markers  face retenue et pose d'arret (cube_detector.py)
 
 Les noeuds sont composes ensemble pour que les images circulent en
 intra-processus : une image 640x480 en rgb8 pese 900 ko, soit 13.8 Mo/s a

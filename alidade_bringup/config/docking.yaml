@@ -28,7 +28,7 @@ cube_detector:
     # exploitables a toute distance, la pose se tirant alors de leurs positions.
     single_face_range: 0.45
 
-cube_docking:
+docking_server:
   ros__parameters:
     use_sim_time: ${use_sim_time}
     # Mise en place 20 cm en retrait de l'arret, soit 30 cm d'ecart : le cube

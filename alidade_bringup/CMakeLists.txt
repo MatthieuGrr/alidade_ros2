@@ -16,7 +16,7 @@ install(PROGRAMS
   scripts/aruco_bench.py
   scripts/camera_bench.py
   scripts/cube_detector.py
-  scripts/cube_docking.py
+  scripts/docking_server.py
   scripts/gyro_odom.py
   scripts/odom_calib.py
   scripts/dock_campaign.py

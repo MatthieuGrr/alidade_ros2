@@ -5,7 +5,7 @@
 
 Chaque essai est decrit par 'type:latence' : n = depart d'ou se trouve le
 robot, f = recul de 40 cm d'abord ; la latence est posee a chaud sur
-cube_docking (detection_latency). Les departs sont perturbes par une rotation
+docking_server (detection_latency). Les departs sont perturbes par une rotation
 (0, +10, -10, +6, -6 deg). Robot en mode DOCKING possible, cube pose au sol.
 
 L'ecart final se mesure mal de tres pres : la camera n'y voit plus que le
@@ -127,8 +127,8 @@ def journal_since(t0):
     out = subprocess.run(['journalctl', '-u', 'alidade', '--since', f'@{int(t0)}', '--no-pager'],
                          capture_output=True, text=True).stdout
     arrive = re.findall(r'arrive : ([+-]\d+) mm sur l axe, ([+-]\d+) mm lateral, ([+-][\d.]+) deg, ([\d.]+) s, (\d+) reprise', out)
-    blind = re.findall(r'cube hors champ a ([\d.]+) cm', out)
-    warn = re.findall(r'cube_docking\]: (.*(?:reprise|echec|perdu).*)', out)
+    blind = re.findall(r'cible hors champ a ([\d.]+) cm', out)
+    warn = re.findall(r'docking_server\]: (.*(?:reprise|echec|perdu).*)', out)
     return (arrive[-1] if arrive else None), (blind[-1] if blind else None), warn
 
 
@@ -140,7 +140,7 @@ rows = []
 for k in range(TRIALS):
     kind, latency = SPEC[k][0], float(SPEC[k][1])
     perturb = PERTURB[k % len(PERTURB)]
-    subprocess.run(['ros2', 'param', 'set', '/cube_docking', 'detection_latency', str(latency)],
+    subprocess.run(['ros2', 'param', 'set', '/docking_server', 'detection_latency', str(latency)],
                    capture_output=True, text=True)
     print(f"\n=== essai {k + 1} : {'loin' if kind == 'f' else 'pres'}, latence {latency} s, rotation {perturb:+.0f} deg")
     if kind == 'f':
