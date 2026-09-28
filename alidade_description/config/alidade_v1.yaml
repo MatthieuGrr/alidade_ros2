@@ -223,7 +223,7 @@ camera:
   # échelle (0.006 ≈ 1.5 niveaux sur 255). Une image de synthèse parfaite donne
   # un taux de détection ArUco irréaliste — le détecteur ne rate jamais un
   # marqueur qu'aucun capteur réel ne rendrait aussi net. Même écart-type que
-  # le banc hors ligne (`aruco_bench.py stone --noise`), pour que les deux
+  # le banc hors ligne (`aruco_bench.py --noise`), pour que les deux
   # restent comparables. La distorsion, elle, ne se simule pas : le camera_info
   # de Gazebo sort d'un FOV, sans coefficients.
   sim_noise_stddev: 0.006

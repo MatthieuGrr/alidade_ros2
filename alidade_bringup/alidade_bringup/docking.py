@@ -74,12 +74,11 @@ class Gains:
     skip_min_run: float = 0.12   # m, ... s'il reste au moins cette course
     # Fin d'approche a l'aveugle : a moins de `blind` de la ligne d'arret, une
     # cible perdue de vue n'arrete pas l'approche, qui se termine a l'odometrie
-    # sur sa derniere pose connue. De pres, c'est le HAUT de l'image qui coupe
-    # la cible, la camera etant inclinee vers le sol : le marqueur d'une pierre
-    # couchee sort du champ a 12.3 cm de la face avant, pour un arret vise a
-    # 10 cm. La pierre est immobile et le cap vient du gyromètre : quelques
-    # centimetres a l'odometrie ne coutent rien -- mais la toucher la
-    # deplacerait, elle ne pese que 90 g.
+    # sur sa derniere pose connue. De pres, le bas de l'image coupe la cible :
+    # mesure sur le robot (camera a 23.5 deg), la face du cube tournee vers le
+    # robot disparait entre 11 et 7.5 cm d'ecart, le dessus entre 5.5 et 4 cm.
+    # La cible est immobile et le cap vient du gyromètre : quelques
+    # centimetres a l'odometrie ne coutent rien.
     blind: float = 0.04          # m
 
 
@@ -184,8 +183,7 @@ class TargetFilter:
     # etait BIMODAL (+-8 degres, le detecteur basculait entre les deux solutions
     # d'un marqueur plan) : un seuil a 15 degres calait le filtre sur l'un des
     # modes en rejetant l'autre. Un changement de face fait 90 degres, et 30 les
-    # separe encore. Le marqueur de 80 mm d'une pierre, redresse, est bien plus
-    # stable : a resserrer apres la campagne d'essais.
+    # separe encore.
     def __init__(self, k_pos: float = 0.3, k_yaw: float = 0.1,
                  outlier: float = math.radians(30.0), switch_count: int = 5):
         self.k_pos, self.k_yaw, self.outlier, self.switch_count = k_pos, k_yaw, outlier, switch_count

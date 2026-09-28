@@ -1,65 +1,38 @@
-# Docking sur une pierre : approche jusqu'a un ecart fixe devant une face.
+# Docking sur le cube ArUco : approche jusqu'a un ecart fixe devant une face.
 # Gabarit rendu au lancement ; chaque bloc est passe a son noeud.
 #
-#   stone_detector.py  /aruco_detections -> /stone/dock_pose : ou base_footprint
-#                      doit s'arreter, face a la pierre retenue parmi toutes
-#                      celles vues (alidade_bringup/stone.py)
-#   docking_server.py  actions /dock_robot et /undock_robot : mise en place dans
+#   cube_detector.py   /aruco_detections -> /cube/dock_pose : ou base_footprint
+#                      doit s'arreter, face au cote du cube le plus tourne vers
+#                      le robot (alidade_bringup/cube.py, dock_target)
+#   cube_docking.py    actions /dock_robot et /undock_robot : mise en place dans
 #                      l'axe de la face, puis approche asservie sur la vision
 #                      jusqu'a la ligne d'arret (alidade_bringup/docking.py)
 #
-# Arret a 10 cm de la face. La pierre pese 90 g : un contact la deplace, et il
-# n'y a pas encore de pince. La camera, inclinee de 15 degres, voit le marqueur
-# entier de 12.3 cm a environ 80 cm de la face avant ; les derniers centimetres
-# se font donc a l'odometrie (blind_distance).
-stone_detector:
+# Arret a 5 cm de la face du cube. De si pres, le bas de l'image coupe le
+# cube : la fin d'approche se fait a l'odometrie sur la derniere cible vue
+# (blind_distance). La camera voit le cube entier de 10 cm a environ 1 m.
+cube_detector:
   ros__parameters:
     use_sim_time: ${use_sim_time}
-    # m, face de la pierre -> face avant du robot, a l'arret.
-    gap: 0.10
+    # m, face du cube -> face avant du robot, a l'arret. A 5 cm, seul le dessus
+    # du cube est encore dans l'image (voir blind_distance plus bas).
+    gap: 0.05
     front_x: ${footprint.front_x} # m, base_footprint -> face avant du robot
-
-    # --- ce qui est une face de pierre, et ce qui n'en est pas
-    # deg, ecart tolere de la normale a l'horizontale. Une face de pierre est
-    # verticale ; au-dela, c'est le dessus d'une pierre, un marqueur de robot,
-    # ou une pose aberrante.
-    tilt_max_deg: 25.0
-    # m, hauteur du centre du marqueur au-dessus du plateau. Une pierre couchee
-    # l'a a 55 mm. La deuxieme d'une pile est a 165 mm et une pierre DEBOUT a
-    # 160 mm : 5 mm les separent, aucune fenetre ne les distingue, et c'est
-    # voulu -- les deux sont hors perimetre.
-    height_min: 0.030
-    height_max: 0.090
-    # m, camera -> marqueur. MESURE sur images rendues aux intrinseques reelles :
-    # le centre est juste a 1-5 mm de 12 a 80 cm, puis le cap se degrade (5-6 deg
-    # a 1.2 m, 60 mm d'erreur de position a 1.6 m).
-    range_min: 0.10
-    range_max: 0.90
-    # deg, 0 = face vue de face, 90 = rasante. Au-dela, le marqueur se reduit a
-    # une lamelle et sa pose ne vaut rien.
-    incidence_max_deg: 70.0
-
-    # --- piles et egalites
-    # m, deux centres plus proches que cela en projection sur le plateau
-    # appartiennent a la meme pile : seul le plus bas est garde. Deux pierres
-    # cote a cote sont a la MEME hauteur, et l'inegalite stricte les epargne.
-    stack_radius: 0.080
-    level_tolerance: 0.030        # m, deux marqueurs consideres au meme niveau
-    # Depart entre deux pierres a egalite de niveau : 'proche' ou 'centre'.
-    tie: proche
-    # m, la cible verrouillee est gardee tant qu'elle reapparait dans ce rayon.
-    # Sans cela, deux pierres a egalite se disputeraient la cible d'une image a
-    # l'autre en pleine approche -- ce que l'hysteresis de face faisait pour le
-    # cube, en plus simple : ici la cible est un point, pas une enumeration.
-    lock_radius: 0.100
-    lock_timeout: 1.0             # s sans aucune pierre vue : le verrou est lache
+    # Changement de face visee : il faut mieux de 30 deg. Sur un cube vu pile en
+    # coin, les deux faces sont a egalite, et le cap tire des positions tremble
+    # de +-10 deg a un metre (profondeur des marqueurs a +-2 a 6 mm) : a 15 deg,
+    # la cible basculait encore d'une face a l'autre.
+    hysteresis_deg: 30.0
+    # m, camera -> marqueur. Au-dela, une face vue SEULE ne donne pas de pose :
+    # son orientation bascule de loin (60 deg a 70 cm). Deux faces restent
+    # exploitables a toute distance, la pose se tirant alors de leurs positions.
+    single_face_range: 0.45
 
 docking_server:
   ros__parameters:
     use_sim_time: ${use_sim_time}
-    # Mise en place 20 cm en retrait de l'arret, soit 30 cm d'ecart : la pierre
-    # y est au milieu du champ, dans la plage ou sa pose est la plus sure, et
-    # l'approche finale presque droite.
+    # Mise en place 20 cm en retrait de l'arret, soit 30 cm d'ecart : le cube
+    # y est au milieu du champ, et l'approche finale presque droite.
     staging: 0.20
     # Planchers mesures sur le robot : en dessous, les roues calent ou
     # demarrent l'une apres l'autre (voir alidade_bringup/docking.py).
@@ -74,23 +47,25 @@ docking_server:
     yaw_tolerance_deg: 5.0        # ... sinon reprise depuis la mise en place
     max_retries: 2
     max_restage: 2                # mises en place supplementaires si la cible a change entre-temps
-    # Fin d'approche a l'odometrie quand la pierre sort du champ a moins de
-    # cette distance de la ligne d'arret. A 15 degres d'inclinaison le marqueur
-    # est perdu a 12.3 cm de la face et l'arret vise 10 cm : 2.3 cm a l'aveugle,
-    # la marge couvre l'incertitude sur l'inclinaison reelle du support.
+    # Fin d'approche a l'odometrie quand le cube sort du champ a moins de
+    # cette distance de la ligne d'arret. Mesure sur le robot, camera a 23.5
+    # deg : la face tournee vers le robot disparait entre 11 et 7.5 cm
+    # d'ecart, le dessus entre 5.5 et 4 cm.
     blind_distance: 0.04          # m
-    detection_timeout: 1.0        # s sans detection : cible perdue
+    detection_timeout: 1.0        # s sans detection : cube perdu
     # Recalage des detections sur la pose du robot : heure de reception moins
     # cette duree (l'horodatage de l'image, lui, est faux d'environ 0.5 s).
-    # CALIBREE sur l'ecart final reel du CUBE, pas mesuree : a 5 cm/s de fin
-    # d'approche, chaque 0.1 s deplace l'arret de 5 mm. A RECALIBRER sur les
-    # pierres (dock_campaign.py) : la cible, la distance d'arret et le biais de
-    # pose ont change, meme si la vitesse de fin d'approche est la meme.
+    # CALIBREE sur l'ecart final reel, pas mesuree : a 5 cm/s de fin
+    # d'approche, chaque 0.1 s deplace l'arret de 5 mm. Campagnes du 13 sept.
+    # 2026, ecart reel mesure en reculant jusqu'a 30 cm, ou la camera est juste :
+    #   0.35 s -> 6.0 / 6.0 / 6.1 cm      0.0 s -> 4.3 / 4.2 / 4.2 cm
+    #   0.15 s -> 5.1 / 5.1 / 4.9 cm      (vise : 5.0)
+    # Une rotation sur place donnait 300 ms de latence camera : la valeur
+    # retenue absorbe aussi le retard de l'odometrie et le biais de la camera
+    # de pres. A recalibrer si la vitesse de fin d'approche (v_min) change.
     detection_latency: 0.15
-    # Lissage de la cible dans odom, a 15 Hz : centre vite, cap lentement. Le
-    # cap d'un marqueur de 80 mm est bien plus sur que celui du cube de 40
-    # (0.2 deg contre +-8 entre 20 et 50 cm) : filter_yaw pourra remonter une
-    # fois la campagne d'essais passee.
+    # Lissage de la cible dans odom, a 15 Hz : centre du cube vite, cap de la
+    # face lentement (il bascule de +-8 degres d'une image a l'autre).
     filter_position: 0.3
     filter_yaw: 0.1
     undock_distance: 0.15         # m, recul du degagement

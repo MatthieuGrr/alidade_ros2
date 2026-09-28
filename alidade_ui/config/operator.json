@@ -12,7 +12,7 @@
     { "type": "simplegoal", "id": "simplegoal_default" },
     { "type": "teleop", "id": "teleop_default" },
     { "type": "compressedimage", "id": "camera_default" },
-    { "type": "markerarray", "id": "stone_markers" },
+    { "type": "markerarray", "id": "cube_markers" },
     { "type": "diagnostics", "id": "diagnostics_default" }
   ],
   "uid": 0,
@@ -33,6 +33,6 @@
                       "joy_offset_x": 0, "joy_offset_y": 0, "opacity": 0.6, "color": "#0b7285" },
   "camera_default": { "topic": "/camera/image_raw/compressed", "img_offset_x": 0, "img_offset_y": 0,
                       "throttle": 200, "opacity": 1.0, "width": 30, "rotation": 0 },
-  "stone_markers": { "topic": "/stone/markers", "throttle": 100, "opacity": 1.0, "disabled_namespaces": [] },
+  "cube_markers": { "topic": "/cube/markers", "throttle": 100, "opacity": 1.0, "disabled_namespaces": [] },
   "diagnostics_default": { "topic": "/diagnostics_agg", "throttle": 1000, "opened": [] }
 }

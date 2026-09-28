@@ -3,7 +3,7 @@
 <package format="3">
   <name>alidade_sim</name>
   <version>1.0.0</version>
-  <description>Simulation Gazebo Harmonic d'Alidade : arene, LiDAR C1 simule, pierres de la Coupe de France, gz_ros2_control avec les memes controleurs que le robot reel</description>
+  <description>Simulation Gazebo Harmonic d'Alidade : arene, LiDAR C1 simule, gz_ros2_control avec les memes controleurs que le robot reel</description>
   <maintainer email="matthieu.georger@gmail.com">Matthieu Georger</maintainer>
   <license>MIT</license>
 

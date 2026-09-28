@@ -103,12 +103,13 @@ def test_check_urdf():
     subprocess.run(['check_urdf', str(path)], check=True, capture_output=True)
 
 
+
 # --------------------------------------------------------------- revisions
-# v2 est la configuration Coupe de France : elle ne doit differer de v1 QUE par
-# le support de camera. Sans ce controle, une calibration d'odometrie ou une
-# masse reportee dans un seul des deux fichiers passerait inapercue -- c'est le
-# prix a payer pour deux revisions, et il se paie une fois ici.
-V2_DIFFERENCES = {'revision', 'camera.mount_rpy'}
+# Le materiel se decrit revision par revision (config/alidade_v<n>.yaml), et
+# `CMakeLists.txt` les ramasse au glob : en ajouter une est un simple fichier.
+# Le risque est alors qu'une mesure -- calibration d'odometrie, masse, entraxe
+# -- soit reportee dans une seule. Ce controle-la se paie une fois ici, et vaut
+# pour toutes les revisions presentes, y compris quand il n'y en a qu'une.
 
 
 def flatten(node, prefix=''):
@@ -119,25 +120,49 @@ def flatten(node, prefix=''):
         yield prefix, node
 
 
-def test_v2_ne_differe_de_v1_que_par_le_support_camera():
-    v1 = dict(flatten(REVISION))
-    v2 = dict(flatten(yaml.safe_load((PKG / 'config' / 'alidade_v2.yaml').read_text())))
-    assert set(v1) == set(v2), 'les deux revisions ne decrivent pas les memes cles'
-    differing = {k for k in v1 if v1[k] != v2[k]}
-    # mount_rpy est une liste : flatten la reduit a mount_rpy.0, .1, .2
-    differing = {k.rsplit('.', 1)[0] if k.rsplit('.', 1)[-1].isdigit() else k for k in differing}
-    assert differing == V2_DIFFERENCES, (
-        f'v1 et v2 different sur {sorted(differing)} ; attendu {sorted(V2_DIFFERENCES)}. '
-        'Reporter la mesure dans les deux fichiers, ou mettre a jour V2_DIFFERENCES.')
+def revisions() -> dict[str, dict]:
+    return {p.stem.split('_')[-1]: dict(flatten(yaml.safe_load(p.read_text())))
+            for p in sorted((PKG / 'config').glob('alidade_v*.yaml'))}
 
 
-def test_v2_plonge_de_quinze_degres():
-    """L'inclinaison decide de la portee sur les pierres : au-dela de 20.4 deg
-    (demi-ouverture verticale), le marqueur d'une pierre couchee sort du haut
-    de l'image. Voir alidade_bringup/stone.py et le README."""
-    for revision, expected in (('v1', 23.5), ('v2', 15.0)):
+def test_toutes_les_revisions_decrivent_les_memes_cles():
+    """Une cle presente dans une seule revision est presque toujours un oubli.
+
+    Une nouvelle revision se fait en copiant la precedente et en changeant ce
+    qui a bouge physiquement ; ce qui n'a pas bouge doit rester identique, et
+    une mesure refaite doit etre reportee partout.
+    """
+    revs = revisions()
+    assert revs, 'aucune revision dans config/'
+    reference, cles = next(iter(revs.items())), None
+    for nom, valeurs in revs.items():
+        if cles is None:
+            cles = set(valeurs)
+            continue
+        manquantes, en_trop = cles - set(valeurs), set(valeurs) - cles
+        assert not (manquantes or en_trop), (
+            f'{nom} ne decrit pas les memes cles que {reference[0]} : '
+            f'manque {sorted(manquantes)}, en trop {sorted(en_trop)}')
+
+
+# Angle de conception du support de camera, en degres. `camera.mount_rpy` n'est
+# PAS cet angle : c'est la CORRECTION mesuree qu'on lui applique (v1 : support
+# dessine a 20 deg, plongee reelle mesuree a 23.5, d'ou mount_rpy = -3.52 deg).
+# C'est tout le travail de fix_urdf.py, et ce test verifie qu'il a bien lieu.
+SUPPORT_NOMINAL = 20.0
+
+
+def test_la_camera_plonge_de_ce_que_la_revision_annonce():
+    """L'inclinaison decide de la portee sur une cible basse : au-dela de la
+    demi-ouverture verticale (20.4 deg), le marqueur sort du haut de l'image."""
+    for revision in revisions():
+        correction = math.degrees(yaml.safe_load(
+            (PKG / 'config' / f'alidade_{revision}.yaml').read_text())['camera']['mount_rpy'][0])
         rot = orientation(run_xacro(target='real', hardware_revision=revision),
                           REVISION['camera']['frame'])
         # z du repere optique = axe de visee ; sa composante verticale donne la plongee.
         plongee = math.degrees(math.asin(-rot[2][2]))
-        assert abs(plongee - expected) < 0.3, f'{revision} : plongee {plongee:.2f} deg'
+        attendu = SUPPORT_NOMINAL - correction
+        assert abs(plongee - attendu) < 0.3, (
+            f'{revision} : plongee {plongee:.2f} deg, attendue {attendu:.2f} '
+            f'(support {SUPPORT_NOMINAL} deg, correction {correction:+.2f})')

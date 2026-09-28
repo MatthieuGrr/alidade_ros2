@@ -6,15 +6,13 @@
 Chaque essai est decrit par 'type:latence' : n = depart d'ou se trouve le
 robot, f = recul de 40 cm d'abord ; la latence est posee a chaud sur
 docking_server (detection_latency). Les departs sont perturbes par une rotation
-(0, +10, -10, +6, -6 deg). Robot en mode DOCKING possible, pierre couchee sur
-le plateau, une de ses grandes faces tournee vers le robot.
+(0, +10, -10, +6, -6 deg). Robot en mode DOCKING possible, cube pose au sol.
 
-L'ecart final se mesure mal de tres pres : le marqueur sort du champ avant
-l'arret (12.3 cm de la face avant pour un arret vise a 10 cm). Apres chaque
-arret, le robot recule donc d'une distance connue a l'odometrie (juste a 0.5 %
-pres, verifie par ICP) jusqu'a ~30 cm, ou la camera est fiable, et l'ecart reel
-a l'arret vaut l'ecart mesure la-bas moins le recul. Degager un metre autour du
-robot.
+L'ecart final se mesure mal de tres pres : la camera n'y voit plus que le
+dessus du cube, flou, au bord de l'image. Apres chaque arret, le robot recule
+donc d'une distance connue a l'odometrie (juste a 0.5 % pres, verifie par
+ICP) jusqu'a ~30 cm, ou la camera est fiable, et l'ecart reel a l'arret vaut
+l'ecart mesure la-bas moins le recul. Degager un metre autour du robot.
 """
 import math
 import re
@@ -39,9 +37,7 @@ if len(sys.argv) < 2 or sys.argv[1] in ('-h', '--help'):
 SPEC = [x.split(':') for x in (sys.argv[1] if len(sys.argv) > 1 else 'n:0.35').split(',')]
 TRIALS = len(SPEC)
 PERTURB = [0.0, 10.0, -10.0, 6.0, -6.0, 0.0]      # rotation avant chaque essai, deg
-# Le centre publie est celui du MARQUEUR, donc sur la face meme : rien a
-# retrancher pour l'epaisseur de la pierre, contrairement au cube.
-FRONT = 0.120
+FRONT, HALF, GAP = 0.120, 0.025, 0.050
 
 
 class Campaign(Node):
@@ -54,7 +50,7 @@ class Campaign(Node):
         self.ids = []
         self.create_subscription(RobotState, '/robot/state', lambda m: setattr(self, 'state', m), 10)
         self.create_subscription(Odometry, '/odom', self.on_odom, 20)
-        self.create_subscription(PointStamped, '/stone/center', lambda m: self.centres.append((time.time(), m.point.x, m.point.y)), 20)
+        self.create_subscription(PointStamped, '/cube/center', lambda m: self.centres.append((time.time(), m.point.x, m.point.y)), 20)
         self.create_subscription(ArucoDetection, '/aruco_detections',
                                  lambda m: self.ids.append(sorted(k.marker_id for k in m.markers)), 20)
         self.cmd = self.create_publisher(Twist, '/cmd_vel_nav', 10)
@@ -106,7 +102,7 @@ class Campaign(Node):
         return math.dist(self.pos, p0)
 
     def camera_gap(self, seconds=3.0):
-        """Ecart face avant -> face de la pierre vue par la camera, et ids vus."""
+        """Ecart face avant -> face du cube vu par la camera, et faces vues."""
         self.centres.clear(); self.ids.clear()
         self.spin(seconds)
         faces = sorted({i for f in self.ids for i in f})
@@ -114,7 +110,7 @@ class Campaign(Node):
             return None, faces
         cx = statistics.median(c[1] for c in self.centres)
         cy = statistics.median(c[2] for c in self.centres)
-        return math.hypot(cx, cy) - FRONT, faces
+        return math.hypot(cx, cy) - HALF - FRONT, faces
 
     def wait_result(self, timeout=60.0):
         end = time.time() + timeout

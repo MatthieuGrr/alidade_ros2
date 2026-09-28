@@ -10,7 +10,7 @@ ros-jazzy-usb-cam
 ros-jazzy-image-transport-plugins
 ros-jazzy-camera-calibration
 v4l-utils
-# Detection de marqueurs ArUco (pierres de la Coupe de France, cible du docking)
+# Detection de marqueurs ArUco (cube cible du docking)
 ros-jazzy-aruco-opencv
 ros-jazzy-aruco-opencv-msgs
 ros-jazzy-slam-toolbox

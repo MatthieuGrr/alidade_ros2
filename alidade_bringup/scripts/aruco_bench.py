@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """Banc d'essai de la detection ArUco, avec ou sans robot.
 
-    aruco_bench.py watch [duree]              # ce que le detecteur voit vraiment
-    aruco_bench.py synth 13 0.50              # camera de synthese : marqueur a 50 cm
-    aruco_bench.py sweep                      # portee et justesse sur images parfaites
-    aruco_bench.py stone                      # batterie de scenes : la bonne pierre est-elle choisie ?
-    aruco_bench.py stone 0.40,0,90            # ... ou une scene donnee : x,y,cap[,niveau]
-    aruco_bench.py stone-range                # enveloppe de visibilite selon l'inclinaison
-    aruco_bench.py fake-stones 0.6,0,90       # SIMULATION : pierres posees dans odom
+    aruco_bench.py watch [duree]            # ce que le detecteur voit vraiment
+    aruco_bench.py synth 1 0.50             # camera de synthese : marqueur 1 a 50 cm
+    aruco_bench.py sweep                    # portee et justesse sur images parfaites
+    aruco_bench.py cube 0.40 35 20          # rend le cube et verifie sa geometrie
+    aruco_bench.py fake-cube 0.60 0.10 30   # SIMULATION : cube a (x, y, cap) dans odom
 
 'synth' publie /camera/image_raw et /camera/camera_info comme le ferait la camera,
 ce qui permet de valider toute la chaine sans materiel : dictionnaire, taille
@@ -15,12 +13,6 @@ de marqueur, cablage des topics. Le lancer dans un terminal, 'watch' dans un
 autre. 'sweep' se passe de ROS et mesure directement dans OpenCV la portee et
 l'erreur de distance ; c'est lui qui a justifie l'affinement sous-pixellique
 des coins (voir alidade_bringup/config/aruco.yaml).
-
-'stone' et 'stone-range' rendent des pierres avec les VRAIES intrinseques et la
-camera a sa vraie hauteur : ils mesurent ce que le robot verra, et 'stone-range'
-montre a quel point l'inclinaison du support decide de tout. Ils servent
-d'etalon au modele Gazebo : un ecart entre les deux vient du rendu, pas de
-l'algorithme.
 
 ATTENTION : sur le robot, les distances ne valent que ce que valent les
 intrinseques de camera_v1.yaml, donc la calibration a la mire et la mise au
@@ -37,13 +29,11 @@ from collections import defaultdict, deque
 import cv2
 import numpy as np
 
-from alidade_bringup import params, stone
-
 # Intrinseques de synthese, volontairement independantes de camera_v1.yaml :
 # les images sont generees et interpretees avec, si bien qu'un ecart mesure ne
 # vient que de la localisation des coins, jamais de la calibration.
 W, H, FX, CX, CY = 640, 480, 530.0, 320.0, 240.0
-SIDE = 0.080          # cote du carre NOIR, comme marker_size
+SIDE = 0.040          # cote du carre NOIR, comme marker_size
 
 
 def dictionary():
@@ -108,243 +98,127 @@ def cmd_sweep(args):
         eb = f"{100 * (b - z) / z:+.1f} %" if b else "   -- "
         print(f"  {z:6.2f} m {px:6.1f}px {fa:>11} {ea:>8}   {fb:>11} {eb:>8}")
 
-    print("\n  decodage des identifiants voisins de celui des pierres, a 0.50 m :")
-    for mid in range(11, 16):
+    print("\n  decodage des six faces du cube, a 0.50 m :")
+    for mid in range(1, 7):
         corners, ids, _ = cv2.aruco.detectMarkers(render(dic, mid, 0.50)[0], dic)
         got = ids.flatten().tolist() if ids is not None else []
-        print(f"    identifiant {mid} -> {got if got else 'NON DECODE'}"
-              + ('   <- celui des pierres' if mid == 13 else ''))
+        print(f"    identifiant {mid} -> {got if got else 'NON DECODE'}")
 
 
-# --------------------------------------------------------- rendu d'une pierre
-# Ici, contrairement a `sweep`, on rend avec les VRAIES intrinseques et la
-# camera a sa vraie place : c'est l'enveloppe de visibilite du ROBOT qu'on
-# mesure. Le surechantillonnage n'est pas un luxe : sans lui, warpPerspective
-# replie la texture et le marqueur devient indecodable de 15 a 80 cm -- une
-# panne de RENDU qu'on prendrait pour une limite de portee.
-SS = 4                  # surechantillonnage du rendu
-PX_PER_M = 5120         # texture : ~410 px pour le carre noir de 80 mm
-PATCH = (0.200, 0.110)  # portion de face plaquee, centree sur le marqueur. Au-dela
-                        # le carton est uniforme et ne change rien au decodage, et
-                        # une face de 320 mm traverse le plan de la camera de pres.
-CARTON, FOND = 150, 190
+def load_cube():
+    """Description du cube (config/cube.yaml) et repere de chaque marqueur.
+
+    Rend, par identifiant, la rotation marqueur -> cube et le centre de la
+    face. Les colonnes de la rotation sont les axes du marqueur exprimes dans
+    le repere du cube, dans l'ordre x, y, z d'OpenCV.
+    """
+    import yaml
+    from alidade_bringup.params import bringup_share
+    spec = yaml.safe_load((bringup_share() / 'config' / 'cube.yaml').read_text())
+    faces = {}
+    for f in spec['faces']:
+        z = np.array(f['normal'], float)
+        y = np.array(f['up'], float)
+        x = np.cross(y, z)
+        rot = np.column_stack([x, y, z])
+        faces[f['id']] = (rot, z * spec['edge'] / 2.0, f['nom'])
+    return spec, faces
 
 
-def detector_params(refine=True):
-    """Parametres du detecteur, ceux de config/aruco.yaml."""
+def cube_corners(spec, faces, mid):
+    """Les 4 coins du marqueur `mid` dans le repere du cube, dans l'ordre
+    d'OpenCV : haut-gauche, haut-droit, bas-droit, bas-gauche."""
+    rot, centre, _ = faces[mid]
+    h = spec['marker_size'] / 2.0
+    local = np.array([[-h, h, 0], [h, h, 0], [h, -h, 0], [-h, -h, 0]], float)
+    return (rot @ local.T).T + centre
+
+
+def cmd_cube(args):
+    spec, faces = load_cube()
+    dic = dictionary()
+    k = np.array([[FX, 0, CX], [0, FX, CY], [0, 0, 1]], float)
+    dist = np.zeros(5)
+
+    # Pose imposee au cube : pose devant la camera, sa face avant tournee vers
+    # elle, puis pivote. Changement d'axes du repere cube (x avant, y gauche,
+    # z haut) vers le repere optique (x droite, y bas, z avant) : l'avant du
+    # cube regarde la camera (x -> -z), sa gauche apparait a droite de l'image
+    # (y -> x), son haut est en haut (z -> -y). A lacet nul, on voit donc la
+    # face 2, comme le robot la verra en approche.
+    base = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, -1.0], [-1.0, 0.0, 0.0]])
+    cy, sy = math.cos(math.radians(args.yaw)), math.sin(math.radians(args.yaw))
+    cp, sp = math.cos(math.radians(args.pitch)), math.sin(math.radians(args.pitch))
+    spin = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]]) @ \
+        np.array([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]])
+    rot_true = base @ spin
+    t_true = np.array([0.0, 0.0, args.distance])
+
+    scene = np.full((H, W), 210, np.uint8)
+    vues = []
+    for mid, (rot_f, centre, nom) in sorted(faces.items()):
+        normale_cam = rot_true @ (rot_f @ np.array([0.0, 0.0, 1.0]))
+        centre_cam = rot_true @ centre + t_true
+        if float(normale_cam @ centre_cam) >= 0:      # face tournee a l'oppose
+            continue
+        vues.append((mid, nom))
+        # La FACE entiere est plaquee d'un coup : le marqueur et sa marge
+        # blanche warpes ensemble, masques par le contour de la face. Masquer
+        # au contour du marqueur rognait son lisere noir exterieur d'un pixel,
+        # et un lisere rompu rend le marqueur indecodable -- panne bien plus
+        # difficile a lire que la vraie.
+        marge = int(round(200 * (spec['edge'] - spec['marker_size'])
+                          / (2 * spec['marker_size'])))
+        tag = cv2.copyMakeBorder(marker_image(dic, mid), marge, marge, marge, marge,
+                                 cv2.BORDER_CONSTANT, value=255)
+        n = tag.shape[0] - 1
+        src = np.float32([[0, 0], [n, 0], [n, n], [0, n]])
+        h = spec['edge'] / 2.0
+        face_local = np.array([[-h, h, 0], [h, h, 0], [h, -h, 0], [-h, -h, 0]], float)
+        face_pts = (rot_f @ face_local.T).T + centre
+        dst = cv2.projectPoints(face_pts, rot_true, t_true, k, dist)[0] \
+            .reshape(-1, 2).astype(np.float32)
+        warped = cv2.warpPerspective(tag, cv2.getPerspectiveTransform(src, dst), (W, H),
+                                     borderValue=255, flags=cv2.INTER_LINEAR)
+        mask = np.zeros((H, W), np.uint8)
+        cv2.fillConvexPoly(mask, dst.astype(np.int32), 255)
+        scene[mask > 0] = warped[mask > 0]
+
+    print(f"  cube a {args.distance:.2f} m, lacet {args.yaw:+.0f} deg, tangage {args.pitch:+.0f} deg")
+    print(f"  faces tournees vers la camera : {', '.join(f'{m} ({n})' for m, n in vues)}")
+
     if hasattr(cv2.aruco, 'DetectorParameters_create'):
         p = cv2.aruco.DetectorParameters_create()
     else:
         p = cv2.aruco.DetectorParameters()
-    p.cornerRefinementMethod = (cv2.aruco.CORNER_REFINE_SUBPIX if refine
-                                else cv2.aruco.CORNER_REFINE_NONE)
-    p.cornerRefinementWinSize, p.cornerRefinementMaxIterations = 5, 30
-    p.cornerRefinementMinAccuracy = 0.1
-    p.minMarkerDistanceRate = 0.03      # voir config/aruco.yaml : hors de 0.02-0.044,
-    return p                            # le marqueur est perdu ou compte double
+    p.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+    corners, ids, _ = cv2.aruco.detectMarkers(scene, dic, parameters=p)
+    trouves = sorted(ids.flatten().tolist()) if ids is not None else []
+    print(f"  marqueurs decodes            : {trouves if trouves else 'AUCUN'}")
 
+    out = '/tmp/cube_rendu.png'
+    cv2.imwrite(out, scene)
+    print(f"  rendu ecrit dans {out}")
 
-def bench_camera(revision, tilt_deg):
-    """(K, distorsion, (largeur, hauteur), pose 4x4 de la camera dans base_footprint).
-
-    La position vient de la revision materielle, l'inclinaison est donnee : elle
-    depend du support, et c'est justement ce qu'on veut faire varier.
-    """
-    import yaml
-    hw = params.load_revision(revision)
-    calib = yaml.safe_load(
-        (params.description_share() / 'config' / hw['camera']['calibration']).read_text())
-    k = np.array(calib['camera_matrix']['data'], float).reshape(3, 3)
-    dist = np.array(calib['distortion_coefficients']['data'], float)
-    x, _, z = hw['frames']['expected']['camera_optical_frame']
-    t = math.radians(tilt_deg)
-    # Repere optique : z le long de l'axe (avant, incline vers le sol), x a
-    # droite, y vers le bas de l'image.
-    axis = np.array([math.cos(t), 0.0, -math.sin(t)])
-    right = np.array([0.0, -1.0, 0.0])
-    pose = np.eye(4)
-    pose[:3, :3] = np.column_stack([right, np.cross(axis, right), axis])
-    pose[:3, 3] = [x, 0.0, z]
-    return k, dist, (calib['image_width'], calib['image_height']), pose, hw
-
-
-def face_texture(dic, spec, marker_id):
-    """Pave de carton portant le marqueur et sa marge blanche."""
-    n_tag = int(spec.marker_size * PX_PER_M)
-    n_pad = int(spec.marker_pad * PX_PER_M)
-    tex = np.full((int(PATCH[1] * PX_PER_M), int(PATCH[0] * PX_PER_M)), CARTON, np.uint8)
-    for size, fill in ((n_pad, 255), (n_tag, None)):
-        r, c = (tex.shape[0] - size) // 2, (tex.shape[1] - size) // 2
-        tex[r:r + size, c:c + size] = 255 if fill else marker_image(dic, marker_id, size)
-    return tex
-
-
-def render_stones(stones, spec, cam, noise=1.5):
-    """Image que la camera verrait. `stones` : (x, y, cap deg, hauteur du
-    marqueur, identifiant), le CAP etant celui du GRAND AXE de la pierre -- 90
-    degres met donc une grande face en face du robot.
-
-    Les faces sont peintes de la plus lointaine a la plus proche : une pierre de
-    320 mm a 40 cm en masque une autre derriere elle, comme en vrai.
-    """
-    k, dist, (w, h), base_from_opt = cam
-    dic = dictionary()
-    cam_from_base = np.linalg.inv(base_from_opt)
-    ks = k.copy(); ks[:2] *= SS
-    scene = np.full((h * SS, w * SS), FOND, np.uint8)
-    rvec, tvec = cv2.Rodrigues(np.eye(3))[0], np.zeros(3)
-    half_w, half_h = PATCH[0] / 2, PATCH[1] / 2
-    quad = np.array([[-half_w, half_h, 0], [half_w, half_h, 0],
-                     [half_w, -half_h, 0], [-half_w, -half_h, 0]], float)
-    for (x, y, yaw, height, mid) in sorted(stones, key=lambda s: -math.hypot(s[0], s[1])):
-        # Les deux grandes faces sont perpendiculaires au grand axe.
-        for side in (1, -1):
-            normal = math.radians(yaw) + side * math.pi / 2
-            centre = np.array([x, y]) + (spec.size[1] / 2) * np.array(
-                [math.cos(normal), math.sin(normal)])
-            in_cam = cam_from_base @ stone.face_pose(centre, normal, height)
-            if in_cam[2, 3] <= 0.02 or in_cam[:3, 2] @ (-in_cam[:3, 3]) <= 0:
-                continue        # derriere la camera, ou face tournee a l'oppose
-            pts = in_cam[:3, :3] @ quad.T + in_cam[:3, 3:4]
-            if np.any(pts[2] < 0.02):
-                continue        # la face traverse le plan de la camera
-            dst = cv2.projectPoints(pts.T, rvec, tvec, ks, dist)[0].reshape(-1, 2).astype(np.float32)
-            tex = face_texture(dic, spec, mid)
-            th, tw = tex.shape
-            src = np.float32([[0, 0], [tw - 1, 0], [tw - 1, th - 1], [0, th - 1]])
-            warp = cv2.warpPerspective(tex, cv2.getPerspectiveTransform(src, dst),
-                                       (w * SS, h * SS), borderValue=255)
-            mask = np.zeros((h * SS, w * SS), np.uint8)
-            cv2.fillConvexPoly(mask, dst.astype(np.int32), 255)
-            scene[mask > 0] = warp[mask > 0]
-    scene = cv2.resize(scene, (w, h), interpolation=cv2.INTER_AREA)
-    if noise:
-        scene = np.clip(scene.astype(np.int16) + np.random.normal(0, noise, scene.shape),
-                        0, 255).astype(np.uint8)
-    return scene
-
-
-def detect_stones(scene, spec, cam):
-    """(identifiant, pose 4x4 dans base_footprint) pour chaque marqueur decode."""
-    k, dist, _, base_from_opt = cam
-    corners, ids, _ = cv2.aruco.detectMarkers(scene, dictionary(), parameters=detector_params())
-    out = []
-    if ids is None:
-        return out
-    half = spec.marker_size / 2
-    obj = np.array([[-half, half, 0], [half, half, 0], [half, -half, 0], [-half, -half, 0]], float)
+    if not trouves:
+        return 1
+    # PnP conjoint sur tous les coins vus : c'est lui qui met la table de
+    # geometrie a l'epreuve. Une face mal orientee ferait exploser l'erreur.
+    obj, img = [], []
     for mid, quad in zip(ids.flatten().tolist(), corners):
-        ok, rvec, tvec = cv2.solvePnP(obj, quad.reshape(-1, 2), k, dist,
-                                      flags=cv2.SOLVEPNP_IPPE_SQUARE)
-        if not ok:
-            continue
-        pose = np.eye(4)
-        pose[:3, :3] = cv2.Rodrigues(rvec)[0]
-        pose[:3, 3] = tvec.ravel()
-        out.append((mid, base_from_opt @ pose))
-    return out
-
-
-# Batterie de reference : chaque cas donne les pierres posees et le centre de
-# celle qu'il FAUT viser (None : aucune). Les placements tiennent compte de la
-# demi-ouverture horizontale de 26.4 degres -- deux pierres ecartees de 16 cm a
-# 35 cm sortent du champ, ce n'est pas un defaut de la selection.
-def battery(spec):
-    low, l2, l3 = spec.lying, spec.stacked(2), spec.stacked(3)
-    return [
-        ('pierre seule, de face',       [(0.40, 0.00, 90, low, 13)], (0.40, 0.00)),
-        ('pierre seule, de travers 20', [(0.40, 0.00, 70, low, 13)], (0.40, 0.00)),
-        ('pierre seule au plus pres',   [(0.30, 0.00, 90, low, 13)], (0.30, 0.00)),
-        ('pierre seule a 70 cm',        [(0.70, 0.00, 90, low, 13)], (0.70, 0.00)),
-        ('pierre decalee a gauche',     [(0.45, 0.10, 100, low, 13)], (0.45, 0.10)),
-        ('pile de 2',                   [(0.40, 0.00, 90, low, 13), (0.40, 0.00, 90, l2, 13)], (0.40, 0.00)),
-        ('pile de 3',                   [(0.45, 0.00, 90, low, 13), (0.45, 0.00, 90, l2, 13),
-                                         (0.45, 0.00, 90, l3, 13)], (0.45, 0.00)),
-        ('pile de 2, vue de 70 cm',     [(0.70, 0.00, 90, low, 13), (0.70, 0.00, 90, l2, 13)], (0.70, 0.00)),
-        ('deux pierres en profondeur',  [(0.40, -0.04, 90, low, 13), (0.80, 0.06, 90, low, 13)], (0.40, -0.04)),
-        ('deux pierres en biais',       [(0.45, -0.09, 70, low, 13), (0.55, 0.10, 110, low, 13)], (0.45, -0.09)),
-        ('proche en biais + pile loin', [(0.40, -0.06, 80, low, 13), (0.75, 0.08, 90, low, 13),
-                                         (0.75, 0.08, 90, l2, 13)], (0.40, -0.06)),
-        ('parasite id 7 seul',          [(0.40, 0.00, 90, low, 7)], None),
-        ('parasite loin, pierre pres',  [(0.45, -0.09, 70, low, 13), (0.60, 0.11, 110, low, 7)], (0.45, -0.09)),
-        ('parasite PRES, pierre loin',  [(0.45, -0.09, 70, low, 7), (0.60, 0.11, 110, low, 13)], (0.60, 0.11)),
-    ]
-
-
-def cmd_stone(args):
-    """Rend des pierres et verifie que stone.py choisit la bonne."""
-    spec = stone.load(params.bringup_share() / 'config' / 'stone.yaml')
-    k, dist, size, pose, hw = bench_camera(args.revision, args.tilt)
-    cam = (k, dist, size, pose)
-    limits = stone.Limits()
-    standoff = args.gap + hw['footprint']['front_x']
-    camera_xy = pose[:3, 3]
-    print(f"  camera a {pose[2, 3] * 1000:.0f} mm, inclinee de {args.tilt:.1f} deg, "
-          f"arret vise a {args.gap * 100:.0f} cm de la face")
-
-    if args.scene:
-        cases = [('scene donnee', [(x, y, yaw, spec.stacked(level), spec.marker_id)
-                                   for x, y, yaw, level in args.scene], None)]
-    else:
-        cases = battery(spec)
-
-    print(f"\n  {'scenario':28s} {'vus':>4} {'retenus':>8} {'rejets':22s} "
-          f"{'cible':>13} {'ecart':>8}  pose d arret")
-    wrong = 0
-    for label, stones, expected in cases:
-        scene = render_stones(stones, spec, cam, args.noise)
-        tags = stone.assess(detect_stones(scene, spec, cam), spec, camera_xy, limits)
-        chosen = stone.select(tags, limits)
-        motifs = ','.join(sorted({t.reason for t in tags if t.reason})) or '-'
-        seen, kept = len(tags), sum(t.ok for t in tags)
-        if chosen is None:
-            bad = expected is not None
-            print(f"  {label:28s} {seen:4d} {kept:8d} {motifs:22s} {'aucune':>13}"
-                  f"{'   <-- CIBLE MANQUEE' if bad else ''}")
-        else:
-            target = stone.dock_target(chosen, standoff)
-            arret = f"({target.x:.3f},{target.y:+.3f},{math.degrees(target.yaw):+6.1f} deg)"
-            if expected is None:
-                bad = not args.scene      # une scene donnee n attend aucune cible precise
-                print(f"  {label:28s} {seen:4d} {kept:8d} {motifs:22s} "
-                      f"({chosen.centre[0]:.2f},{chosen.centre[1]:+.2f}) {'':>8}  {arret}"
-                      f"{'   <-- FAUX POSITIF' if bad else ''}")
-            else:
-                err = math.dist(chosen.centre[:2], expected) - spec.size[1] / 2
-                bad = abs(err) > 0.010
-                print(f"  {label:28s} {seen:4d} {kept:8d} {motifs:22s} "
-                      f"({expected[0]:.2f},{expected[1]:+.2f}) {err * 1000:+6.1f}mm  {arret}"
-                      f"{'   <-- MAUVAISE PIERRE' if bad else ''}")
-        wrong += bad
-        if args.out:
-            cv2.imwrite(f"{args.out}/stone_{label.replace(' ', '_').replace(',', '')}.png", scene)
-    print(f"\n  {len(cases) - wrong}/{len(cases)} scenarios corrects"
-          + (f", rendus ecrits dans {args.out}" if args.out else ''))
-    return 1 if wrong else 0
-
-
-def cmd_stone_range(args):
-    """Enveloppe de visibilite : a quel ecart le marqueur tient-il dans l'image ?
-
-    C'est l'inclinaison du support qui decide, et elle seule : au-dela de la
-    demi-ouverture verticale (20.4 deg), le haut de l'image passe sous la
-    hauteur du marqueur et la portee s'effondre.
-    """
-    spec = stone.load(params.bringup_share() / 'config' / 'stone.yaml')
-    print(f"  ecart face avant -> face de la pierre, marqueur de "
-          f"{spec.marker_size * 1000:.0f} mm centre a {spec.lying * 1000:.0f} mm\n")
-    print(f"  {'tilt':>6}  " + ' '.join(f'{g * 100:5.0f}' for g in args.gaps) + '   cm')
-    for tilt in args.tilts:
-        k, dist, size, pose, hw = bench_camera(args.revision, tilt)
-        cam = (k, dist, size, pose)
-        row = []
-        for gap in args.gaps:
-            x = gap + hw['footprint']['front_x'] + spec.size[1] / 2
-            scene = render_stones([(x, 0.0, 90.0, spec.lying, spec.marker_id)], spec, cam, args.noise)
-            found = detect_stones(scene, spec, cam)
-            row.append(f"{'  .  ' if not found else f'{len(found):5d}'}")
-        print(f"  {tilt:5.1f}d  " + ' '.join(row))
-    print("\n  nombre de detections ; '.' = marqueur non decode, 1 = attendu")
+        obj.append(cube_corners(spec, faces, mid))
+        img.append(quad.reshape(-1, 2))
+    ok, rvec, tvec = cv2.solvePnP(np.vstack(obj).astype(np.float64),
+                                  np.vstack(img).astype(np.float64), k, dist,
+                                  flags=cv2.SOLVEPNP_ITERATIVE)
+    if not ok:
+        print("  resolution de pose impossible")
+        return 1
+    err_pos = float(np.linalg.norm(tvec.ravel() - t_true)) * 1000.0
+    rot_est = cv2.Rodrigues(rvec)[0]
+    err_ang = math.degrees(math.acos(
+        max(-1.0, min(1.0, (np.trace(rot_est.T @ rot_true) - 1.0) / 2.0))))
+    print(f"  pose du cube retrouvee       : erreur {err_pos:.1f} mm et {err_ang:.2f} deg")
     return 0
 
 
@@ -383,18 +257,16 @@ def cmd_synth(args):
     rclpy.shutdown()
 
 
-def cmd_fake_stones(args):
-    """Detections qu'une vraie camera ferait de pierres posees dans la scene.
+def cmd_fake_cube(args):
+    """Detections qu'une vraie camera ferait d'un cube pose dans la scene.
 
-    Pour la simulation tant qu'elle n'a pas de pierres texturees : elles sont
-    fixes dans odom (qui vaut le monde tant que le robot simule ne glisse pas),
-    et chaque face laterale est publiee sur /aruco_detections si elle regarde la
-    camera et tient entiere dans l'image calibree. Cela exerce toute la chaine
-    du docking : stone_detector, docking_server, gestionnaire de modes -- y
-    compris les piles et les pierres voisines, que le rendu Gazebo mettra plus
-    longtemps a produire. Les detections sont publiees avec le retard mesure sur
-    le robot (--latency), pour que la compensation de docking_server soit
-    exercee comme en vrai.
+    Pour la simulation, qui n'a pas de cube ArUco : le cube est fixe dans odom
+    (qui vaut le monde tant que le robot simule ne glisse pas), et chaque face
+    est publiee sur /aruco_detections si elle regarde la camera et tient
+    entiere dans l'image calibree. Cela exerce toute la chaine du docking :
+    cube_detector, cube_docking, gestionnaire de modes. Les detections sont
+    publiees avec le retard mesure sur le robot (--latency), pour que la
+    compensation de cube_docking soit exercee comme en vrai.
     """
     import rclpy
     import tf2_ros
@@ -403,27 +275,21 @@ def cmd_fake_stones(args):
     from geometry_msgs.msg import Point, Pose, Quaternion
     from rclpy.node import Node
 
-    spec = stone.load(params.bringup_share() / 'config' / 'stone.yaml')
-    calib = yaml.safe_load(
-        (params.description_share() / 'config' / 'camera_v1.yaml').read_text())
+    from alidade_bringup import cube, params
+
+    edge, faces = cube.load(params.bringup_share() / 'config' / 'cube.yaml')
+    calib = yaml.safe_load((params.description_share() / 'config' / 'camera_v1.yaml').read_text())
     k = np.array(calib['camera_matrix']['data']).reshape(3, 3)
     w, h = calib['image_width'], calib['image_height']
-    half = spec.marker_size / 2
-    corners = np.array([[-half, half, 0, 1], [half, half, 0, 1],
-                        [half, -half, 0, 1], [-half, -half, 0, 1]]).T
-
-    # Une pose par FACE laterale : les deux grandes faces d'une pierre sont
-    # perpendiculaires a son grand axe, et portent le meme identifiant.
-    faces = []
-    for (x, y, yaw, level) in args.stones:
-        for side in (1, -1):
-            normal = math.radians(yaw) + side * math.pi / 2
-            centre = np.array([x, y]) + (spec.size[1] / 2) * np.array(
-                [math.cos(normal), math.sin(normal)])
-            faces.append(stone.face_pose(centre, normal, spec.stacked(level)))
+    half = SIDE / 2
+    corners = np.array([[-half, half, 0, 1], [half, half, 0, 1], [half, -half, 0, 1], [-half, -half, 0, 1]]).T
+    yaw = math.radians(args.yaw)
+    in_odom = np.eye(4)
+    in_odom[:3, :3] = [[math.cos(yaw), -math.sin(yaw), 0], [math.sin(yaw), math.cos(yaw), 0], [0, 0, 1]]
+    in_odom[:3, 3] = [args.x, args.y, edge / 2]
 
     rclpy.init()
-    node = Node('aruco_bench_fake_stones')
+    node = Node('aruco_bench_fake_cube')
     buf = tf2_ros.Buffer()
     tf2_ros.TransformListener(buf, node)
     pub = node.create_publisher(ArucoDetection, '/aruco_detections', 10)
@@ -438,37 +304,33 @@ def cmd_fake_stones(args):
         except tf2_ros.TransformException:
             return
         tr, q = t.transform.translation, t.transform.rotation
-        cam_from_odom = stone.matrix([tr.x, tr.y, tr.z], [q.x, q.y, q.z, q.w])
+        cam_from_odom = cube.matrix([tr.x, tr.y, tr.z], [q.x, q.y, q.z, q.w])
         msg = ArucoDetection()
         msg.header.stamp = t.header.stamp
         msg.header.frame_id = frame
-        for pose in faces:
-            m = cam_from_odom @ pose
+        for fid, face in faces.items():
+            m = cam_from_odom @ in_odom @ face.pose
             pts = m @ corners
             if np.any(pts[2] < 0.05) or m[:3, 2] @ -m[:3, 3] <= 0.3 * np.linalg.norm(m[:3, 3]):
                 continue            # derriere la camera, ou face vue a plus de ~72 degres
             uv = (k @ pts[:3])[:2] / pts[2]
             if np.any(uv[0] < 0) or np.any(uv[0] >= w) or np.any(uv[1] < 0) or np.any(uv[1] >= h):
                 continue            # marqueur coupe par le bord de l'image
-            qx, qy, qz, qw = stone.quaternion(m[:3, :3])
-            msg.markers.append(MarkerPose(marker_id=spec.marker_id, pose=Pose(
+            qx, qy, qz, qw = cube.quaternion(m[:3, :3])
+            msg.markers.append(MarkerPose(marker_id=fid, pose=Pose(
                 position=Point(x=m[0, 3], y=m[1, 3], z=m[2, 3]),
                 orientation=Quaternion(x=qx, y=qy, z=qz, w=qw))))
-        # Les identifiants sont tous les memes : c'est le NOMBRE de faces vues
-        # qui renseigne, et lui seul.
-        count = len(msg.markers)
-        if count != seen_before:
-            print(f'faces vues : {count}', flush=True)
-            seen_before = count
+        ids = sorted(mk.marker_id for mk in msg.markers)
+        if ids != seen_before:
+            print(f"faces vues : {ids or 'aucune'}", flush=True)
+            seen_before = ids
         now = rclpy.time.Time.from_msg(t.header.stamp).nanoseconds
         pending.append((now, msg))
         while pending and now - pending[0][0] >= args.latency * 1e9:
             pub.publish(pending.popleft()[1])
 
     node.create_timer(1 / 15.0, tick)
-    for (x, y, yaw, level) in args.stones:
-        print(f'pierre en ({x:.2f}, {y:.2f}) dans odom, cap {yaw:.0f} deg, '
-              f'niveau {level} (marqueur a {spec.stacked(level) * 1000:.0f} mm)')
+    print(f'cube en ({args.x:.2f}, {args.y:.2f}) dans odom, cap {args.yaw:.0f} deg')
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
@@ -535,39 +397,18 @@ def main():
     p = sub.add_parser('sweep', help='portee et justesse, sans ROS')
     p.set_defaults(func=cmd_sweep)
 
-    def scene(text):
-        """'x,y,cap[,niveau]' : une pierre posee, cap de son GRAND AXE en degres
-        (90 = une grande face en face du robot), niveau 1 par defaut (celle du
-        bas d'une pile)."""
-        parts = text.split(',')
-        if not 3 <= len(parts) <= 4:
-            raise argparse.ArgumentTypeError(f"'{text}' : attendu x,y,cap[,niveau]")
-        x, y, yaw = (float(v) for v in parts[:3])
-        return x, y, yaw, int(parts[3]) if len(parts) == 4 else 1
+    c = sub.add_parser('cube', help='rend le cube et verifie sa geometrie')
+    c.add_argument('distance', nargs='?', type=float, default=0.40)
+    c.add_argument('yaw', nargs='?', type=float, default=35.0)
+    c.add_argument('pitch', nargs='?', type=float, default=20.0)
+    c.set_defaults(func=cmd_cube)
 
-    c = sub.add_parser('stone', help='rend des pierres et verifie le choix de la cible')
-    c.add_argument('scene', nargs='*', type=scene,
-                   help='x,y,cap[,niveau] ; sans argument, la batterie de reference')
-    c.add_argument('--tilt', type=float, default=15.0, help='inclinaison du support, degres')
-    c.add_argument('--gap', type=float, default=0.10, help='ecart vise a l arret, m')
-    c.add_argument('--noise', type=float, default=1.5, help='bruit gaussien de l image')
-    c.add_argument('--revision', default='v1')
-    c.add_argument('--out', help='repertoire ou ecrire les rendus')
-    c.set_defaults(func=cmd_stone)
-
-    r = sub.add_parser('stone-range', help='enveloppe de visibilite selon l inclinaison')
-    r.add_argument('--tilts', type=float, nargs='+',
-                   default=[23.5, 20.0, 17.0, 15.0, 12.0, 10.0])
-    r.add_argument('--gaps', type=float, nargs='+',
-                   default=[0.10, 0.125, 0.15, 0.20, 0.30, 0.50, 0.70, 0.90])
-    r.add_argument('--noise', type=float, default=1.5)
-    r.add_argument('--revision', default='v1')
-    r.set_defaults(func=cmd_stone_range)
-
-    f = sub.add_parser('fake-stones', help='SIMULATION : detections de pierres posees dans odom')
-    f.add_argument('stones', nargs='+', type=scene, help='x,y,cap[,niveau] par pierre')
+    f = sub.add_parser('fake-cube', help='SIMULATION : detections d un cube pose dans odom')
+    f.add_argument('x', type=float)
+    f.add_argument('y', type=float)
+    f.add_argument('yaw', nargs='?', type=float, default=0.0, help='cap du cube, degres')
     f.add_argument('--latency', type=float, default=0.35, help='retard des detections, s')
-    f.set_defaults(func=cmd_fake_stones)
+    f.set_defaults(func=cmd_fake_cube)
 
     args = ap.parse_args()
     return args.func(args) or 0

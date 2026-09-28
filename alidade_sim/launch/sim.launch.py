@@ -9,23 +9,10 @@ C'est la meme pile que sur le robot : memes controleurs, meme controllers.yaml,
 meme SLAM, meme nav2. Seul le plugin materiel change (gz_ros2_control), et
 use_sim_time vaut true partout.
 
-POUR LES PIERRES, il faut la revision v2 : elle decrit le support de camera a
-15 degres, le seul avec lequel le marqueur d'une pierre couchee reste dans
-l'image au-dela de 16 cm (voir config/alidade_v2.yaml). Puis poser des pierres
-dans la scene :
+Le point d'apparition se choisit (spawn_x, spawn_y, spawn_yaw), ce qui evite
+d'avoir a poser le robot a l'origine d'un monde ou elle tombe mal :
 
-    ros2 launch alidade_sim sim.launch.py nav:=true hardware_revision:=v2
-    ros2 run alidade_sim stones.py spawn 0.6,0,90
-
-Deux mondes. `arena.sdf` (defaut) est une salle de 6 x 6 m : c'est la seule ou
-le LiDAR ait de quoi cartographier, donc celle des essais de SLAM et de
-calibration. `eurobot.sdf` est la table de la Coupe, dont les bordures de 70 mm
-passent SOUS le plan du LiDAR (153.7 mm) : elle sert au jeu, pas a la
-localisation. Le robot y part d'une salle du trone :
-
-    ros2 launch alidade_sim sim.launch.py hardware_revision:=v2 \
-        world:=$(ros2 pkg prefix alidade_sim)/share/alidade_sim/worlds/eurobot.sdf \
-        spawn_x:=2.75 spawn_y:=1.05 spawn_yaw:=3.1416
+    ros2 launch alidade_sim sim.launch.py spawn_x:=1.0 spawn_y:=0.5 spawn_yaw:=1.5708
 
 La detection ArUco (aruco:=true) tourne ici en noeud separe, la ou le robot la
 compose dans le conteneur de la camera : le pont Gazebo est deja un processus a
@@ -33,7 +20,6 @@ part, il n'y a pas d'intra-processus a gagner. Les images transitent donc en
 DDS local, en RELIABLE -- jamais best_effort, ou la fragmentation d'une image
 de 900 ko perdrait tout (voir README).
 """
-import os
 from pathlib import Path
 
 import yaml
@@ -101,8 +87,8 @@ def setup(context):
         parameters=[{'use_sim_time': use_sim_time}],
     )
 
-    # Detection des pierres : aruco_tracker sur l'image pontee, puis le meme
-    # stone_detector.py que sur le robot, avec le meme docking.yaml.
+    # Detection du cube : aruco_tracker sur l'image pontee, puis le meme
+    # cube_detector.py que sur le robot, avec le meme docking.yaml.
     vision = []
     if aruco:
         with open(params.render_config('aruco.yaml', hw, use_sim_time)) as f:
@@ -110,7 +96,7 @@ def setup(context):
         vision = [
             Node(package='aruco_opencv', executable='aruco_tracker_autostart',
                  name='aruco_tracker', output='screen', parameters=[aruco_cfg]),
-            Node(package='alidade_bringup', executable='stone_detector.py',
+            Node(package='alidade_bringup', executable='cube_detector.py',
                  output='screen',
                  parameters=[params.render_config('docking.yaml', hw, use_sim_time)]),
         ]
@@ -118,12 +104,9 @@ def setup(context):
     chain, last_spawner = actions.controller_chain(use_sim_time, revision)
 
     launched = [
-        # Permet a Gazebo de resoudre les URI package:// des maillages du robot,
-        # et model://stone de la pierre (models/ du paquet de simulation).
-        SetEnvironmentVariable('GZ_SIM_RESOURCE_PATH', os.pathsep.join([
-            str(params.description_share().parent),
-            str(Path(get_package_share_directory('alidade_sim')) / 'models'),
-        ])),
+        # Permet a Gazebo de resoudre les URI package:// des maillages du robot.
+        SetEnvironmentVariable('GZ_SIM_RESOURCE_PATH',
+                               str(params.description_share().parent)),
         gazebo, robot_state_publisher, bridge, spawn, *vision,
         # Le controller_manager n'existe qu'une fois le modele instancie dans
         # Gazebo : on enchaine donc les spawners sur la fin du spawn.
@@ -147,12 +130,10 @@ def generate_launch_description():
                               description='mode initial du gestionnaire (IDLE, MAPPING, LOCALIZATION...)'),
         DeclareLaunchArgument('headless', default_value='false', description='serveur Gazebo seul'),
         DeclareLaunchArgument('aruco', default_value='true',
-                              description='detection des marqueurs des pierres'),
+                              description='detection des marqueurs ArUco du cube'),
         DeclareLaunchArgument('world', default_value=default_world,
                               description='empty.sdf ne contient pas gz-sim-sensors-system : le LiDAR y resterait muet'),
-        # Sur la table Eurobot, le robot part d'une salle du trone, pas de
-        # l'origine -- qui y serait un coin de table :
-        #   world:=<share>/worlds/eurobot.sdf spawn_x:=2.75 spawn_y:=1.05 spawn_yaw:=3.1416
+        # Le point d'apparition, pour les mondes ou l'origine tombe mal :
         DeclareLaunchArgument('spawn_x', default_value='0.0'),
         DeclareLaunchArgument('spawn_y', default_value='0.0'),
         DeclareLaunchArgument('spawn_yaw', default_value='0.0'),

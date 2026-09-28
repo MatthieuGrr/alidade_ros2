@@ -18,8 +18,8 @@ Regles :
     milieu d'une cartographie et y revenir sans perdre la carte ;
   - EXPLORATION = MAPPING plus l'explorateur de frontieres, qui pousse ses
     propres buts nav2 ; on l'arrete avant de quitter le mode ;
-  - DOCKING approche une pierre jusqu'a un ecart fixe (docking_server.py).
-    Il ne demarre que pierre VUE : pas de recherche, l'operateur amene le robot
+  - DOCKING approche le cube jusqu'a un ecart fixe (docking_server.py).
+    Il ne demarre que cube VU : pas de recherche, l'operateur amene le robot
     a portee. Il ne suit que l'odometrie et la pose vue, et preserve donc la
     localisation en cours comme TELEOP. Redemander DOCKING une fois arrete
     relance une approche ; on annule l'approche avant de quitter le mode.
@@ -52,7 +52,7 @@ class Context:
     current_map: str = ''
     slam_active: bool = False
     amcl_active: bool = False
-    stone_visible: bool = False    # pose d'arret recue il y a moins d'une seconde
+    cube_visible: bool = False    # pose d'arret recue il y a moins d'une seconde
     docking_active: bool = False   # une approche est en cours
 
 
@@ -86,9 +86,8 @@ def plan(ctx: Context, target: int, map_name: str = '') -> Plan:
     if target == DOCKING:
         if ctx.current == DOCKING and ctx.docking_active:
             return Plan(target, [], ctx.current_map)
-        if not ctx.stone_visible:
-            raise Refused('DOCKING : aucune pierre retenue (face laterale d une pierre couchee, '
-                          'entre 12 et 80 cm, vue de moins de 70 degres de biais)')
+        if not ctx.cube_visible:
+            raise Refused('DOCKING : pas de pose sure du cube (a moins de 45 cm, ou deux faces nettes en coin)')
         if ctx.current == DOCKING:
             return Plan(target, [('dock', 'start', '')], ctx.current_map)
 
@@ -106,7 +105,7 @@ def plan(ctx: Context, target: int, map_name: str = '') -> Plan:
         return Plan(target, [], chosen_map if target in AMCL_MODES else ctx.current_map)
 
     # L'exploration s'arrete avant tout le reste : elle tient un but nav2. De
-    # meme l'approche de la pierre, qui commande les roues.
+    # meme l'approche du cube, qui commande les roues.
     if ctx.current == EXPLORATION:
         steps.append(('explore', 'stop', ''))
     if ctx.current == DOCKING:

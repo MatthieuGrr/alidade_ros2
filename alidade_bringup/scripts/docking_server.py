@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Docking sur une cible vue : actions /dock_robot et /undock_robot (nav2_msgs).
 
-    /stone/dock_pose, /stone/center (base_footprint) --+
-    /odom (roues + gyromètre) -------------------------+--> /cmd_vel_nav
+    /cube/dock_pose, /cube/center (base_footprint) --+
+    /odom (roues + gyromètre) -----------------------+--> /cmd_vel_nav
 
 Les types d'action sont ceux du serveur de docking de nav2, pour qu'un
 client (le gestionnaire de modes) n'ait pas a savoir qui les sert ; la
@@ -20,7 +20,7 @@ dans odom, centre et cap separement (docking.TargetFilter explique pourquoi).
 
 Ce noeud ne sait RIEN de ce qu'il aborde : il recoit un centre et une pose
 d'arret, et il y va. Reconnaitre la cible est le travail du detecteur
-(stone_detector.py) ; changer de cible ne demande pas d'y toucher.
+(cube_detector.py) ; changer de cible ne demande pas d'y toucher.
 """
 import math
 import threading
@@ -94,8 +94,8 @@ class DockingServer(Node):
 
         group = ReentrantCallbackGroup()
         self.create_subscription(Odometry, '/odom', self.on_odom, 20, callback_group=group)
-        self.create_subscription(PointStamped, '/stone/center', self.on_centre, 10, callback_group=group)
-        self.create_subscription(PoseStamped, '/stone/dock_pose', self.on_dock_pose, 10, callback_group=group)
+        self.create_subscription(PointStamped, '/cube/center', self.on_centre, 10, callback_group=group)
+        self.create_subscription(PoseStamped, '/cube/dock_pose', self.on_dock_pose, 10, callback_group=group)
         self.cmd = self.create_publisher(Twist, '/cmd_vel_nav', 10)
         for action, name, run in ((DockRobot, 'dock_robot', self.run_dock),
                                   (UndockRobot, 'undock_robot', self.run_undock)):

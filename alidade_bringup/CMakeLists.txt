@@ -15,7 +15,7 @@ install(PROGRAMS
   scripts/mode_manager.py
   scripts/aruco_bench.py
   scripts/camera_bench.py
-  scripts/stone_detector.py
+  scripts/cube_detector.py
   scripts/docking_server.py
   scripts/gyro_odom.py
   scripts/odom_calib.py
@@ -27,7 +27,8 @@ if(BUILD_TESTING)
   ament_add_pytest_test(test_params test/test_params.py)
   ament_add_pytest_test(test_telemetry test/test_telemetry.py)
   ament_add_pytest_test(test_modes test/test_modes.py)
-  ament_add_pytest_test(test_stone test/test_stone.py)
+  ament_add_pytest_test(test_cube test/test_cube.py)
+  ament_add_pytest_test(test_cube_pose test/test_cube_pose.py)
   ament_add_pytest_test(test_docking test/test_docking.py)
   ament_add_pytest_test(test_odometry test/test_odometry.py)
 endif()

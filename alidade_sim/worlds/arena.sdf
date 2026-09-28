@@ -93,7 +93,7 @@
            peine a lever l'ambiguite entre les quatre orientations.
            DECALE en y : a sa place d'origine (y = 1.2, donc de y = 0 a 2.4) il
            barrait x = 0.5 a 0.7 juste devant le point d'apparition du robot, et
-           toute pierre posee au-dela de 30 cm se retrouvait dedans ou derriere.
+           tout objet pose au-dela de 30 cm se retrouvait dedans ou derriere.
            Symptome : detection parfaite jusqu'a 30 cm puis plus rien, qu'on
            prend volontiers pour un defaut de texture. Il degage maintenant
            l'axe du robot a partir de y = 0.4. -->
