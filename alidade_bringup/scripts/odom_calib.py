@@ -5,7 +5,16 @@
     odom_calib.py straight [metres] [v]   # cap apres une ligne droite (ICP)
 
 A refaire apres tout changement de pneus, de plancher, de firmware moteur ou
-d'IMU. Trois sources sont comparees a chaque essai : l'odometrie ROUES
+d'IMU.
+
+DANGER, et c'est la raison des garde-fous ci-dessous : cet outil publie sur
+/diff_drive_controller/cmd_vel, donc EN AVAL du collision_monitor. La chaine de
+securite de nav2 ne le protege pas, et c'est voulu -- une calibration a besoin
+de vitesses exactes, pas lissees. Il surveille donc lui-meme le LiDAR et
+s'arrete net si un obstacle entre dans sa marge. Un robot a touche un mur le
+29 septembre 2026 faute de ce controle : la verification de degagement avait
+ete faite AVANT le lancement, dans la meme commande, donc elle ne pouvait rien
+empecher. Trois sources sont comparees a chaque essai : l'odometrie ROUES
 (/diff_drive_controller/odom), l'integrale du GYROMETRE et l'odometrie
 FUSIONNEE publiee par gyro_odom.py (/odom).
 
@@ -40,6 +49,17 @@ from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Imu, LaserScan
 
 BINS = 360
+
+
+# Marges de securite. Le chassis v2 deborde de 55 mm devant base_footprint et
+# son rayon circonscrit vaut 235 mm (coins arriere du plateau) : en pivotant
+# sur place il balaie donc ce rayon dans TOUTES les directions.
+MARGE_AVANT = 0.35            # m, distance minimale devant pendant une ligne droite
+# En deca, le recalage n'a pas de quoi trancher et rend un chiffre plausible mais
+# faux. Les bons essais du 29 sept. 2026 en avaient 326 et 329 ; les mauvais, 175
+# et 182, pour des erreurs annoncees de 18 et 34 % que le robot ne faisait pas.
+APPARIEMENTS_MIN = 250
+RAYON_CIRCONSCRIT = 0.235     # m, encombrement balaye en rotation
 
 
 def spin(node, dur):
@@ -100,6 +120,28 @@ class Bench(Node):
             self.drive(); spin(self, 0.05)
         spin(self, 1.5)
 
+    def libre(self, demi_angle=None):
+        """Distance au plus proche obstacle, eventuellement dans un cone avant.
+
+        `demi_angle` a None regarde tout autour (pour les rotations sur place) ;
+        une valeur en degres restreint au cone centre sur +x (pour les lignes
+        droites), car un obstacle derriere n'est pas un danger quand on avance.
+        """
+        if not self.scans:
+            return 0.0
+        sc = self.scans[-1]
+        proche = float('inf')
+        for i, r in enumerate(sc.ranges):
+            if not math.isfinite(r) or not (sc.range_min <= r <= sc.range_max):
+                continue
+            if demi_angle is not None:
+                a = math.degrees(sc.angle_min + i * sc.angle_increment)
+                a = abs((a + 180) % 360 - 180)
+                if a > demi_angle:
+                    continue
+            proche = min(proche, r)
+        return proche
+
     def fresh_scans(self, seconds=7.0):
         """Six tours de LiDAR : la mediane par degre lisse le bruit du capteur."""
         self.scans.clear(); spin(self, seconds)
@@ -145,14 +187,23 @@ def cmd_rotate(bench, args):
     turned = fused = 0.0
     prev_w, prev_f = bench.wheel[2], bench.fused
     bench.gyro.clear()
+    place = bench.libre()
+    if place < RAYON_CIRCONSCRIT + 0.05:
+        raise SystemExit(
+            f'REFUS : obstacle a {place:.2f} m, le chassis balaie '
+            f'{RAYON_CIRCONSCRIT:.2f} m en pivotant sur place.')
     print(f"{abs(args.turns):g} tour(s) a {args.w} rad/s, "
-          f"{'anti-horaire' if sens > 0 else 'horaire'}...")
+          f"{'anti-horaire' if sens > 0 else 'horaire'} ({place:.2f} m de degagement)...")
     start = time.time()
     while turned < target and time.time() - start < 180:
         rclpy.spin_once(bench, timeout_sec=0.02)
         turned += sens * wrap(bench.wheel[2] - prev_w); prev_w = bench.wheel[2]
         fused += sens * wrap(bench.fused - prev_f); prev_f = bench.fused
         left = target - turned
+        if bench.libre() < RAYON_CIRCONSCRIT + 0.05:
+            bench.stop()
+            raise SystemExit(f'ARRET : obstacle a {bench.libre():.2f} m, le chassis balaie '
+                             f'{RAYON_CIRCONSCRIT:.2f} m en pivotant')
         bench.drive(w=sens * max(0.45, min(args.w, 1.5 * left)) if left > 0.02 else 0.0)
     bench.stop()
     gyro = integrate(bench.gyro, sens, bias)
@@ -229,13 +280,26 @@ def cmd_straight(bench, args):
     before = cloud(bench.fresh_scans())
     w0, f0 = bench.wheel, bench.fused
     bench.gyro.clear()
-    print(f'ligne droite de {args.metres:g} m a {args.v} m/s, cap libre...')
+    # REFUS avant de rouler, plutot qu'un arret a mi-parcours : on sait deja que
+    # la place manque, autant le dire sans bouger.
+    place = bench.libre(demi_angle=30)
+    if place < args.metres + MARGE_AVANT:
+        raise SystemExit(
+            f'REFUS : {place:.2f} m devant, il en faut {args.metres + MARGE_AVANT:.2f} '
+            f'({args.metres:g} m d essai + {MARGE_AVANT:.2f} de marge). '
+            f'Reculer, tourner vers du degage, ou demander moins.')
+    print(f'ligne droite de {args.metres:g} m a {args.v} m/s, cap libre '
+          f'({place:.2f} m devant)...')
     start = time.time()
     while time.time() - start < 60:
         rclpy.spin_once(bench, timeout_sec=0.02)
         done = math.dist(bench.wheel[:2], w0[:2])
         if done >= args.metres - 0.005:
             break
+        if bench.libre(demi_angle=30) < MARGE_AVANT:
+            bench.stop()
+            raise SystemExit(f'ARRET : obstacle a {bench.libre(demi_angle=30):.2f} m devant, '
+                             f'moins que la marge de {MARGE_AVANT:.2f} m')
         bench.drive(v=args.v if args.metres - done > 0.15 else max(0.05, args.v / 2))
     bench.stop()
     w1, f1 = bench.wheel, bench.fused
@@ -257,6 +321,16 @@ def cmd_straight(bench, args):
     print(f"erreurs de cap : roues {math.degrees(wrap(wheel_yaw - dt)):+.2f} deg, "
           f"/odom {math.degrees(wrap(fused_yaw - dt)):+.2f} deg")
     print(f"erreur de distance : roues {100*(math.dist(w1[:2], w0[:2])/math.hypot(dx, dy) - 1):+.2f} %")
+    if used < APPARIEMENTS_MIN:
+        print()
+        print(f"*** MESURE A REJETER : {used} appariements seulement, il en faut "
+              f"{APPARIEMENTS_MIN}. ***")
+        print("    L'ICP n'a pas assez de structure ici et converge ailleurs. Deux essais")
+        print("    dans un coin degage ont ainsi annonce +34 % et +18 % d'erreur de")
+        print("    distance, la ou un recalage a 330 points en trouvait 0.4 % au meme")
+        print("    endroit. Se placer dans une zone ou le LiDAR voit des murs sous tous")
+        print("    les azimuts, et refaire. Un chiffre issu d'un recalage pauvre est pire")
+        print("    qu'une absence de mesure : il a l'air d'en etre une.")
 
 
 def main():
