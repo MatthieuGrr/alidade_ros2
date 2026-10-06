@@ -20,6 +20,7 @@ install(PROGRAMS
   scripts/gyro_odom.py
   scripts/odom_calib.py
   scripts/lidar_zero.py
+  scripts/lidar_reset.py
   scripts/dock_campaign.py
   DESTINATION lib/${PROJECT_NAME})
 

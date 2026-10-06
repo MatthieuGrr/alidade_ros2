@@ -4,8 +4,23 @@
 # Installer : sudo cp 99-alidade.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger
 # Verifier  : ls -l /dev/rplidar /dev/pico ; lsusb pour les identifiants.
 
-# RPLIDAR C1 : pont serie CP210x (Silicon Labs), famille ttyUSB.
-SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", MODE="0660", GROUP="dialout", SYMLINK+="rplidar"
+# RPLIDAR C1, branche DIRECTEMENT sur l'UART du Pi depuis le 6 oct. 2026, avec
+# sa propre alimentation. Il etait auparavant derriere un pont serie CP210x en
+# USB :
+#   SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ...
+#
+# Le lien garde le nom /dev/rplidar pour que rplidar.yaml et alidade.service
+# n'aient pas a connaitre le cablage.
+#
+# DEUX PREREQUIS COTE PI, sans lesquels le driver ne verra qu'un port occupe :
+#   - retirer `console=serial0,115200` de /boot/firmware/cmdline.txt ;
+#   - `systemctl disable --now serial-getty@ttyAMA0`.
+# Sinon une console de login tient l'UART et repond a la place du capteur.
+#
+# A NOTER : un UART de la carte est toujours present, contrairement a un
+# peripherique USB. Le BindsTo=dev-rplidar.device d'alidade.service n'arrete
+# donc plus la pile quand le LiDAR est debranche -- il ne detecte plus rien.
+SUBSYSTEM=="tty", KERNEL=="ttyAMA0", MODE="0660", GROUP="dialout", SYMLINK+="rplidar"
 
 # Raspberry Pi Pico 2 en CDC, famille ttyACM. diffdrive_pico_firmware s'annonce
 # avec un descripteur USB dedie (USBD_PRODUCT / USBD_MANUFACTURER dans son
