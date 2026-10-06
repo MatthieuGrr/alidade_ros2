@@ -15,7 +15,7 @@ l'erreur de distance ; c'est lui qui a justifie l'affinement sous-pixellique
 des coins (voir alidade_bringup/config/aruco.yaml).
 
 ATTENTION : sur le robot, les distances ne valent que ce que valent les
-intrinseques de camera_v1.yaml, donc la calibration a la mire et la mise au
+intrinseques de camera_bench.yaml, donc la calibration a la mire et la mise au
 point avec laquelle elle a ete faite (voir camera_bench.py).
 """
 from __future__ import annotations
@@ -29,7 +29,7 @@ from collections import defaultdict, deque
 import cv2
 import numpy as np
 
-# Intrinseques de synthese, volontairement independantes de camera_v1.yaml :
+# Intrinseques de synthese, volontairement independantes de camera_bench.yaml :
 # les images sont generees et interpretees avec, si bien qu'un ecart mesure ne
 # vient que de la localisation des coins, jamais de la calibration.
 W, H, FX, CX, CY = 640, 480, 530.0, 320.0, 240.0
@@ -278,7 +278,7 @@ def cmd_fake_cube(args):
     from alidade_bringup import cube, params
 
     edge, faces = cube.load(params.bringup_share() / 'config' / 'cube.yaml')
-    calib = yaml.safe_load((params.description_share() / 'config' / 'camera_v1.yaml').read_text())
+    calib = yaml.safe_load((params.description_share() / 'config' / 'camera_bench.yaml').read_text())
     k = np.array(calib['camera_matrix']['data']).reshape(3, 3)
     w, h = calib['image_width'], calib['image_height']
     half = SIDE / 2

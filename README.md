@@ -23,7 +23,7 @@ alidade_ros2/
 ```
                  Raspberry Pi 5 (Jazzy)                              Poste (Docker Jazzy)
  ┌──────────────────────────────────────────────────────┐        ┌──────────────────────┐
- │ rplidar_ros ──/scan──▶ slam_toolbox ──map→odom──▶ TF │  WiFi  │ rviz2                │
+ │ sllidar_ros2 ──/scan──▶ slam_toolbox ──map→odom──▶ TF │  WiFi  │ rviz2                │
  │                          ▲                            │◀──────▶│  « 2D Goal Pose »    │
  │ ros2_control_node        │ /map                       │Cyclone │  ou                  │
  │  ├ PicoSystem ◀──USB──▶ Pico 2 (ticks, IMU brute)     │  DDS   │ Gazebo + même pile   │
@@ -128,17 +128,6 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    *Calibration* : **il n'y en a plus**. Le D435i sort ses intrinsèques
    d'usine et son pilote publie un `camera_info` calibré. Passer une mire
    devant lui ne sert à rien, et il n'y a aucun fichier à maintenir.
-   Couvrir toute l'image, **coins compris**, à plusieurs distances et avec
-   des inclinaisons de 30 à 45°, en marquant un temps d'arrêt à chaque pose.
-   Puis **CALIBRATE**, et **SAVE** (pas COMMIT, qui voudrait écrire dans le
-   pilote) : l'archive `/tmp/calibrationdata.tar.gz` contient `ost.yaml` et
-   les vues retenues. `ost.yaml` remplace
-   `alidade_description/config/camera_v1.yaml`, en gardant
-   `camera_name: alidade_c920` ; reporter ensuite `2·atan(w/2fx)` dans
-   `camera.sim_horizontal_fov` pour que Gazebo voie la même ouverture.
-   Résultat du 11 sept. 2026 : 0,32 px de reprojection sur 45 vues,
-   fx = 644,5 px — et non les 530 nominaux, ni les 690 estimés auparavant
-   en autofocus.
 
    **Marqueurs ArUco** (`aruco:=true`, actif par défaut avec la caméra). Le
    détecteur est composé dans le même conteneur que la caméra, donc les
@@ -151,9 +140,9 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
    ros2 run alidade_bringup aruco_bench.py cube 0.40 35 20   # rend le cube, vérifie sa géométrie
    ros2 run rqt_image_view rqt_image_view /aruco_tracker/debug   # marqueurs entourés
    ```
-   La **détection** ne dépend pas de la calibration, seulement les **poses** :
-   tant que `camera_v1.yaml` est nominal, `/aruco_detections` et les TF
-   `marker_<id>` portent un biais d'échelle. Portée mesurée sur images
+   La **détection** ne dépend pas de la calibration, seulement les **poses**,
+   et le D435i publie des intrinsèques calibrées d'usine : elles n'ont plus
+   le biais d'échelle qu'avait la C920 non calibrée. Portée mesurée sur images
    parfaites : 0,15 à 1,5 m, la limite basse venant du champ de vision et la
    haute d'un côté apparent tombé à 14 px. Sur un cube posé au sol, la
    caméra étant fixe, inclinée de 23,5° (mesurés) et son axe optique à
@@ -334,7 +323,7 @@ annonce ; un Pico flashé avec autre chose n'apparaît pas en `/dev/pico`.
 | `slam` | false | slam_toolbox en mode mapping, transitions lifecycle pilotées |
 | `nav` | false | nav2 (implique slam) |
 | `mock` | false | `mock_components` à la place du Pico, pour tester sans matériel |
-| `lidar` | true | démarre rplidar_ros |
+| `lidar` | true | démarre sllidar_ros2 |
 | `hardware_revision` | v2 | sélectionne `alidade_<rev>.yaml` |
 | `pico_port` | /dev/pico | port série du Pico |
 | `use_sim_time` | false | ne jamais le passer à true sur le robot réel |
@@ -470,7 +459,7 @@ Le champ du LiDAR simulé se restreint au besoin par `lidar.fov_min` /
 `lidar.fov_max` dans la révision ; sans eux, le tour complet, comme sur le
 capteur réel.
 
-`controllers.yaml`, `nav2.yaml`, `slam.yaml`, `rplidar.yaml` sont des gabarits
+`controllers.yaml`, `nav2.yaml`, `slam.yaml`, `sllidar.yaml` sont des gabarits
 dont les marqueurs `${section.cle}` sont remplis au lancement depuis la
 révision. Un marqueur non résolu fait échouer le lancement.
 
@@ -509,6 +498,18 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
 
 ## Pièges connus
 
+- **Toute commande `ros2` lancée contre le robot doit sourcer
+  `system/env/alidade_env.sh`**, pas seulement `install/setup.bash`. Sans lui,
+  `CYCLONEDDS_URI` manque : la pile tourne avec `AllowMulticast=false` et des
+  pairs déclarés, votre shell avec le multicast et aucun pair. L'appariement
+  est alors PARTIEL, et c'est tout le problème — `ros2 node list`,
+  `ros2 topic list`, `topic echo` et `topic hz` fonctionnent (les nœuds de la
+  pile vous découvrent en unicast et vous émettent), mais **tout service reste
+  sans réponse** : `service call` affiche « making request » et attend
+  indéfiniment, `ros2 param get` expire, `ros2 lifecycle get` ne rend rien.
+  Rien ne signale la cause. Cela ressemble à un nœud bloqué, et une session
+  entière s'est perdue à chercher un interblocage dans `mode_manager` qui
+  répondait très bien.
 - Un appel de service `gz` sur un monde qui **n'existe pas** n'échoue pas : il
   **expire**. Le message parle alors de délai et on cherche une lenteur pendant
   que la scène reste vide. Vérifier le nom du monde (`gz topic -l`) avant de
@@ -544,25 +545,25 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   que le robot est resté éteint un moment. Le service attend la synchro
   (60 s au plus) ; le vrai remède est une pile ML2020 sur le connecteur BAT
   et `dtparam=rtc_bbat_vchg=3000000` dans `/boot/firmware/config.txt`.
-- `angle_compensate: true` dans `rplidar.yaml` fixe le nombre de points par
-  tour à 360 (1°), vérifié sur le matériel : le pilote rééchantillonne à
-  `int(1e6 / 200 µs / 10 / 360) = 1` × 360 quelle que soit la cadence.
-  `slam_toolbox` rejette les scans dont la taille varie d'un tour à l'autre,
-  donc `false` (≈ 500 points bruts, ± quelques-uns) n'est pas une option. La
-  simulation, elle, produit les 500 points de `samples_per_rev`.
-- `rplidar_ros` échoue au démarrage trois fois sur quatre (« Cannot start
-  scan: '80008002' », timeout du SDK : le pilote lance `startScan` juste
-  après la mise en route du moteur, sans attendre ni réessayer), à froid
-  comme à chaud. Le `respawn` finit par passer, mais le premier scan arrive
-  de 15 s à plus de deux minutes après le lancement (jusqu'à 14 échecs
-  consécutifs observés). L'alimentation est hors de cause : le rail 5 V reste
-  à 4,9 V pendant les tentatives. Conséquence sans garde-fou : la costmap
-  globale de nav2 expire (60 s) en attendant le repère `map`, que
-  `slam_toolbox` ne publie qu'après un premier scan, et le lifecycle manager
-  abandonne tout le bringup sans jamais réessayer. D'où `wait_for_scan.py` :
-  nav2 ne démarre qu'après le premier `/scan`. Ne jamais tuer le pilote sans
-  lui laisser envoyer `Stop` (SIGKILL) : le suivant reste bloqué à la
-  connexion tant que le C1 diffuse.
+- `angle_compensate: true` dans `sllidar.yaml` fixe le nombre de points par
+  tour à 721 (0,5007°), vérifié sur le matériel : constant sur dix messages
+  consécutifs. `slam_toolbox` rejette les scans dont la taille varie d'un tour
+  à l'autre, donc `false` (≈ 500 points bruts, ± quelques-uns) n'est pas une
+  option. La simulation, elle, produit les 500 points de `samples_per_rev` :
+  les deux ne coïncident pas, ce qui est sans conséquence dans un run donné
+  mais reste à aligner si on compare finement simulation et réel.
+- Le pilote est `sllidar_ros2`, construit depuis les sources et épinglé dans
+  `system/sources.sh`, **pas** le paquet apt `ros-jazzy-rplidar-ros` : celui-ci
+  ne connaît pas le C1 et ne le démarre jamais de façon fiable (voir « Le
+  LiDAR ne démarrait pas » plus bas, et le commentaire de `sllidar.yaml`).
+  Sans garde-fou, la costmap globale de nav2 expire (60 s) en attendant le
+  repère `map`, que `slam_toolbox` ne publie qu'après un premier scan, et le
+  lifecycle manager abandonne tout le bringup sans jamais réessayer. D'où
+  `wait_for_scan.py` : nav2 ne démarre qu'après le premier `/scan`. Ne jamais
+  tuer le pilote sans lui laisser envoyer `Stop` (SIGKILL) : le suivant reste
+  bloqué à la connexion tant que le C1 diffuse. Tuer le binaire `sllidar_node`
+  lui-même, pas l'enveloppe `ros2 run`, qui laisse le nœud orphelin tenir le
+  port série.
 - Le BNO055 lâche dès que les moteurs tournent : le firmware du Pico met gyro
   et accéléromètre à zéro quand la lecture I2C échoue et publie ces zéros
   comme des mesures. Mesuré : 8 % de trames nulles au repos, puis une rafale
@@ -615,14 +616,23 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   IMU en panne ressemble à une IMU immobile. `odometry.usable()` rejette donc
   les six zéros exacts, `accel z` nul étant impossible sous gravité. Un vrai
   drapeau de validité dans la trame S reste à faire côté firmware.
-- **Le LiDAR met de 15 s à 7 minutes à démarrer**, en enchaînant les
-  « Cannot start scan: 80008002 » avant de réussir (18 à 38 échecs observés,
-  respawn du pilote). Il répond pourtant (firmware, état de santé) et sa
-  configuration n'a pas changé. Écarté : la caméra n'y est pour rien (même
-  échec avec `camera:=false`). Tant que `/scan` n'arrive pas, `nav.launch`
-  attend, donc ni chaîne de sécurité ni mouvement : c'est voulu, mais il faut
-  le savoir. Piste restante : mécanique ou alimentation, depuis le nouveau
-  support.
+- **Le LiDAR ne démarrait pas — résolu le 6 octobre 2026.** Pendant un mois,
+  « Cannot start scan: 80008002 » en boucle, 18 à 38 échecs et de 15 s à
+  7 minutes avant qu'un scan sorte. Ont été soupçonnés puis mis hors de cause :
+  le support mécanique, le hub USB, l'alimentation (une alimentation dédiée a
+  été achetée), le câble, et un passage du capteur en UART direct sur le Pi.
+  La cause était le pilote. `ros-jazzy-rplidar-ros` annonce lui-même son
+  périmètre — « support rplidar A2/A1 and A3/S1 » — et le C1 n'y figure pas.
+  Il embarque la SDK 1.12.0, dont l'API dépréciée ne demande pas au capteur ce
+  qu'il sait faire : elle compare son firmware à un seuil fixé pour la série A
+  (`>= ((0x1<<8) | 17)`, soit 1.17). Le C1 annonce 1.02, donc 258 < 273, et le
+  pilote se replie sur un chemin où le balayage ne démarre jamais. Le capteur
+  était irréprochable de bout en bout : en protocole brut, `GET_LIDAR_CONF`
+  répond et `SCAN` rend des données en moins de 500 ms. Avec `sllidar_ros2`
+  (SDK 2.1.0), qui négocie le mode par `getAllSupportedScanModes` : 5 démarrages
+  sur 5, en une demi-seconde. **La leçon** : un code d'erreur hexadécimal peut
+  vouloir dire « ce pilote ne connaît pas ce capteur », et aucune mesure
+  électrique ne le dira.
 - **Débrancher le Pico arrête toute la pile**, par `BindsTo=dev-pico.device`
   dans le service : c'est la sécurité voulue, les moteurs se coupent. Mais
   l'arrêt est propre, donc `Restart=on-failure` ne relançait rien : d'où

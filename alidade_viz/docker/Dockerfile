@@ -5,6 +5,16 @@
 # memes versions de nav2, slam_toolbox et ros2_control que le Pi.
 #
 # Reconstruire : ./alidade_viz/docker/run.sh build
+#
+# La liste ci-dessous RECOUPE system/apt-packages.txt sans lui etre identique,
+# et les deux sont maintenues a la main : le contexte de build est ce dossier,
+# qui ne voit pas system/. Ce qui est commun doit rester synchronise -- la
+# simulation n'a de sens que si elle tourne les memes versions que le Pi. Ce
+# qui differe est voulu : ici les outils de bureau (rqt, rviz, x11-apps, les
+# interfaces graphiques) et Gazebo ; la-bas le materiel du robot.
+#
+# Le pilote LiDAR n'apparait NI ici NI la-bas : sllidar_ros2 est construit
+# depuis les sources, epingle dans system/sources.sh.
 FROM osrf/ros:jazzy-desktop
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -18,8 +28,11 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
       ros-jazzy-ros2-controllers \
       ros-jazzy-slam-toolbox \
       ros-jazzy-navigation2 \
-      ros-jazzy-rplidar-ros \
-      ros-jazzy-usb-cam \
+      ros-jazzy-realsense2-camera \
+      ros-jazzy-realsense2-description \
+      ros-jazzy-robot-state-publisher \
+      ros-jazzy-diagnostic-msgs \
+      ros-jazzy-tf2-tools \
       ros-jazzy-image-transport-plugins \
       ros-jazzy-camera-calibration \
       ros-jazzy-rqt-image-view \

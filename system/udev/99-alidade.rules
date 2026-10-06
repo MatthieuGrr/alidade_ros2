@@ -9,7 +9,7 @@
 # USB :
 #   SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ...
 #
-# Le lien garde le nom /dev/rplidar pour que rplidar.yaml et alidade.service
+# Le lien garde le nom /dev/rplidar pour que sllidar.yaml et alidade.service
 # n'aient pas a connaitre le cablage.
 #
 # DEUX PREREQUIS COTE PI, sans lesquels le driver ne verra qu'un port occupe :
@@ -29,10 +29,10 @@ SUBSYSTEM=="tty", KERNEL=="ttyAMA0", MODE="0660", GROUP="dialout", SYMLINK+="rpl
 # que le nom ne soit pas tronque a 19 caracteres, sinon rien ne correspondrait.
 SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{manufacturer}=="MatthieuGrr", ATTRS{product}=="diffdrive_pico_firmware", MODE="0660", GROUP="dialout", SYMLINK+="pico"
 
-# Logitech C920 HD Pro : deux noeuds video4linux, la capture (index 0) et un
-# flux de metadonnees UVC (index 1) qui n'est pas une camera. Seul le premier
-# recoit le lien. Groupe video, deja celui des /dev/video* sur Ubuntu.
-SUBSYSTEM=="video4linux", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="082d", ATTR{index}=="0", MODE="0660", GROUP="video", SYMLINK+="camera"
+# PAS de regle pour la camera. Le D435i n'est pas un simple peripherique video
+# (il expose plusieurs noeuds video4linux et se pilote par librealsense) : le
+# pilote le cherche sur le bus USB par son identifiant fabricant. Un lien
+# /dev/camera n'aurait servi a rien. Voir alidade_bringup/launch/camera.launch.py.
 
 # Pour epingler un exemplaire precis, ajouter ATTRS{serial}=="..." lu par :
 #   udevadm info -a -n /dev/ttyACM0 | grep serial

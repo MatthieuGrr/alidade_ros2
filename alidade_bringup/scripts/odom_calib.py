@@ -7,14 +7,22 @@
 A refaire apres tout changement de pneus, de plancher, de firmware moteur ou
 d'IMU.
 
-DANGER, et c'est la raison des garde-fous ci-dessous : cet outil publie sur
-/diff_drive_controller/cmd_vel, donc EN AVAL du collision_monitor. La chaine de
-securite de nav2 ne le protege pas, et c'est voulu -- une calibration a besoin
-de vitesses exactes, pas lissees. Il surveille donc lui-meme le LiDAR et
-s'arrete net si un obstacle entre dans sa marge. Un robot a touche un mur le
-29 septembre 2026 faute de ce controle : la verification de degagement avait
-ete faite AVANT le lancement, dans la meme commande, donc elle ne pouvait rien
-empecher. Trois sources sont comparees a chaque essai : l'odometrie ROUES
+SECURITE. L'outil publie sur /cmd_vel_nav, donc EN AMONT de la chaine nav2 :
+velocity_smoother, puis collision_monitor, qui bloque tout sous 22 cm. Il est
+protege comme la navigation l'est.
+
+Ce n'etait pas le cas avant le 29 septembre 2026, ou il publiait directement
+sur /diff_drive_controller/cmd_vel : un robot a touche un mur ce jour-la, la
+verification de degagement ayant ete faite AVANT le lancement et dans la meme
+commande, donc hors d'etat d'empecher quoi que ce soit.
+
+Ses propres garde-fous (`libre`, MARGE_AVANT, RAYON_CIRCONSCRIT) restent utiles
+et ne font pas double emploi : ils REFUSENT avant de rouler quand la place
+manque, au lieu de laisser le moniteur bloquer a mi-parcours et rendre une
+mesure tronquee. Ils mesurent depuis base_link, en passant par TF -- voir
+Bench.pose_laser, et ne jamais y remettre d'angle ni de deport en dur.
+
+Trois sources sont comparees a chaque essai : l'odometrie ROUES
 (/diff_drive_controller/odom), l'integrale du GYROMETRE et l'odometrie
 FUSIONNEE publiee par gyro_odom.py (/odom).
 
@@ -22,7 +30,8 @@ Ni l'IMU ni slam_toolbox ne servent de reference : c'est le LiDAR contre la
 scene, de deux facons selon le mouvement.
   rotate   : N tours COMPLETS sur place, profils de scan avant/apres correles
              circulairement. Les tours partiels seraient biaises, le LiDAR
-             etant excentre de 7 cm.
+             etant excentre (152 mm en arriere de base_link sur la v2 ; la
+             valeur exacte vient de TF, pas d'ici).
   straight : ICP 2D point a point entre les nuages avant/apres, initialise par
              l'odometrie. La correlation de profils ne vaut que pour une
              rotation pure, d'ou l'ICP des qu'il y a translation.
@@ -31,9 +40,7 @@ Resultats a reporter dans alidade_<revision>.yaml : kinematics pour les roues,
 imu.gyro_scale pour le gyromètre. Mesure du 12 sept. 2026 : roues 0.9975 a
 1.0061, gyromètre 1.029 (d'ou gyro_scale 0.9718), fusion 0.9989.
 
-Degager un metre autour du robot : le moniteur de collision bloque tout
-mouvement sous 22 cm, et les scripts publient sur /cmd_vel_nav, donc a
-travers le lisseur et le moniteur, comme la navigation.
+Degager un metre autour du robot.
 """
 import argparse
 import math
@@ -47,6 +54,7 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Imu, LaserScan
+from tf2_ros import Buffer, TransformListener
 
 BINS = 360
 
@@ -96,6 +104,9 @@ class Bench(Node):
         self.create_subscription(Imu, '/imu/data_raw', self.on_imu, qos_profile_sensor_data)
         self.create_subscription(LaserScan, '/scan', self.scans.append, qos_profile_sensor_data)
         self.cmd = self.create_publisher(Twist, '/cmd_vel_nav', 10)
+        self.tampon = Buffer()
+        self.ecoute = TransformListener(self.tampon, self)
+        self._laser = None      # (x, y, lacet) du capteur dans base_link, mis en cache
 
     def on_wheel(self, m):
         p = m.pose.pose
@@ -120,26 +131,78 @@ class Bench(Node):
             self.drive(); spin(self, 0.05)
         spin(self, 1.5)
 
+    def pose_laser(self):
+        """Pose du capteur dans base_link : (x, y, lacet), lue dans TF une fois.
+
+        RIEN ICI N'EST EN DUR, et c'est essentiel. Le pilote Slamtec publie
+        theta_ros = pi - theta_brut (sllidar_node.cpp, lignes 218-222), soit un
+        DEMI-TOUR par rapport au repere du robot. Cette correction ne vit plus
+        dans le pilote -- sllidar_node n'a pas de `flip_x_axis` -- mais dans
+        `lidar.mount_rpy` de alidade_<revision>.yaml, donc dans la transformee
+        base_link -> laser. Tout ce qui lit /scan sans passer par TF voit donc
+        les angles RETOURNES.
+
+        Ce script l'a appris a ses depens : son cone de degagement avant,
+        calcule sur les angles bruts, regardait en realite VERS L'ARRIERE, et
+        `cloud()` compensait de son cote par un `+180` ecrit en dur avec un
+        deport `laser_x` reste de la v1. Deux conventions contradictoires dans
+        le meme fichier, sur l'outil qui fait avancer le robot sans le
+        collision_monitor.
+        """
+        if self._laser is None:
+            fin = time.time() + 5.0
+            while time.time() < fin:
+                try:
+                    tf = self.tampon.lookup_transform('base_link', 'laser',
+                                                      rclpy.time.Time())
+                except Exception:
+                    rclpy.spin_once(self, timeout_sec=0.1)
+                    continue
+                t = tf.transform.translation
+                self._laser = (t.x, t.y, yaw_of(tf.transform.rotation))
+                break
+            else:
+                # Pas de repli : sans cette transformee les garde-fous sont faux,
+                # et un garde-fou faux est pire que pas de garde-fou.
+                raise SystemExit(
+                    'REFUS : base_link <- laser absente de TF. robot_state_publisher '
+                    'tourne-t-il ? Sans elle les distances de securite sont fausses.')
+        return self._laser
+
+    def points(self, scans=None, rmin=None, rmax=None):
+        """Points des scans exprimes dans base_link."""
+        px, py, lacet = self.pose_laser()
+        pts = []
+        for sc in (scans if scans is not None else self.scans[-1:]):
+            bas = sc.range_min if rmin is None else rmin
+            haut = sc.range_max if rmax is None else rmax
+            for i, r in enumerate(sc.ranges):
+                if not math.isfinite(r) or not (bas <= r <= haut):
+                    continue
+                a = sc.angle_min + i * sc.angle_increment + lacet
+                pts.append((px + r * math.cos(a), py + r * math.sin(a)))
+        return pts
+
     def libre(self, demi_angle=None):
-        """Distance au plus proche obstacle, eventuellement dans un cone avant.
+        """Distance au plus proche obstacle, mesuree DEPUIS base_link.
 
         `demi_angle` a None regarde tout autour (pour les rotations sur place) ;
         une valeur en degres restreint au cone centre sur +x (pour les lignes
         droites), car un obstacle derriere n'est pas un danger quand on avance.
+
+        La distance est prise depuis base_link et non depuis le capteur, parce
+        que c'est a base_link que se rapportent les deux seuils : MARGE_AVANT
+        et RAYON_CIRCONSCRIT decrivent l'encombrement du CHASSIS. Le capteur
+        etant 152 mm en arriere du centre, les comparer a une portee mesuree
+        depuis le capteur surestimait le degagement devant d'autant.
         """
         if not self.scans:
             return 0.0
-        sc = self.scans[-1]
         proche = float('inf')
-        for i, r in enumerate(sc.ranges):
-            if not math.isfinite(r) or not (sc.range_min <= r <= sc.range_max):
+        for x, y in self.points():
+            if demi_angle is not None and abs(math.degrees(math.atan2(y, x))) > demi_angle:
                 continue
-            if demi_angle is not None:
-                a = math.degrees(sc.angle_min + i * sc.angle_increment)
-                a = abs((a + 180) % 360 - 180)
-                if a > demi_angle:
-                    continue
-            proche = min(proche, r)
+            proche = min(proche, math.hypot(x, y))
         return proche
 
     def fresh_scans(self, seconds=7.0):
@@ -149,14 +212,17 @@ class Bench(Node):
 
 
 # --------------------------------------------------------------- rotation
-def profile(scans):
-    """Portee mediane par degre, sur plusieurs tours."""
+def profile(bench, scans):
+    """Portee mediane par degre, vue de base_link, sur plusieurs tours.
+
+    Les azimuts sont ceux du ROBOT, pas ceux du capteur : voir Bench.pose_laser.
+    Pour une correlation avant/apres, un decalage constant s'annulerait de toute
+    facon -- mais deux conventions dans un meme fichier finissent par se croiser.
+    """
     acc = [[] for _ in range(BINS)]
     for sc in scans:
-        for i, r in enumerate(sc.ranges):
-            if math.isfinite(r) and r > 0.05:
-                b = int(round(math.degrees(sc.angle_min + i * sc.angle_increment))) % BINS
-                acc[b].append(r)
+        for x, y in bench.points([sc], rmin=0.05):
+            acc[int(round(math.degrees(math.atan2(y, x)))) % BINS].append(math.hypot(x, y))
     return [statistics.median(v) if v else None for v in acc]
 
 
@@ -178,7 +244,7 @@ def cmd_rotate(bench, args):
     sens = 1.0 if args.turns >= 0 else -1.0
     target = abs(args.turns) * 2 * math.pi
     print('profil de depart...')
-    before = profile(bench.fresh_scans())
+    before = profile(bench, bench.fresh_scans())
     bench.gyro.clear(); spin(bench, 4.0)
     bias = statistics.fmean(w for _, w in bench.gyro)
     print(f"biais du gyromètre a l'arret : {math.degrees(bias):+.4f} deg/s "
@@ -211,7 +277,7 @@ def cmd_rotate(bench, args):
     fused += sens * wrap(bench.fused - prev_f)
 
     print('profil final...')
-    residual, err = circular_shift(before, profile(bench.fresh_scans()))
+    residual, err = circular_shift(before, profile(bench, bench.fresh_scans()))
     truth = abs(args.turns) * 360 + sens * (-residual)
     print()
     print(f"roues       {math.degrees(turned):9.2f} deg")
@@ -224,19 +290,23 @@ def cmd_rotate(bench, args):
 
 
 # --------------------------------------------------------------- ligne droite
-def cloud(scans, laser_x=0.0456):
-    """Nuage 2D dans le repere du robot (le laser est tourne de 180 deg)."""
+def cloud(bench, scans):
+    """Nuage 2D dans base_link, median par degre.
+
+    Le demi-tour du capteur et son deport viennent de TF (Bench.pose_laser).
+    Cette fonction portait jusqu'au 6 octobre 2026 un `+180` et un
+    `laser_x=0.0456` ecrits en dur : le premier doublait la correction tant que
+    le pilote la faisait, le second etait le deport de la v1 (il vaut -0.152 m
+    en v2). Ne rien remettre en dur ici.
+    """
     acc = {}
     for sc in scans:
-        for i, r in enumerate(sc.ranges):
-            if math.isfinite(r) and 0.1 < r < 8.0:
-                a = round(math.degrees(sc.angle_min + i * sc.angle_increment))
-                acc.setdefault(a, []).append(r)
+        for x, y in bench.points([sc], rmin=0.1, rmax=8.0):
+            acc.setdefault(int(round(math.degrees(math.atan2(y, x)))), []).append(math.hypot(x, y))
     pts = []
     for a, v in acc.items():
-        r = statistics.median(v)
-        t = math.radians(a + 180)
-        pts.append((laser_x + r * math.cos(t), r * math.sin(t)))
+        r, t = statistics.median(v), math.radians(a)
+        pts.append((r * math.cos(t), r * math.sin(t)))
     return np.array(pts)
 
 
@@ -277,7 +347,7 @@ def icp(src, dst, guess, iters=25, reject=0.25):
 
 def cmd_straight(bench, args):
     print('nuage de depart...')
-    before = cloud(bench.fresh_scans())
+    before = cloud(bench, bench.fresh_scans())
     w0, f0 = bench.wheel, bench.fused
     bench.gyro.clear()
     # REFUS avant de rouler, plutot qu'un arret a mi-parcours : on sait deja que
@@ -304,7 +374,7 @@ def cmd_straight(bench, args):
     bench.stop()
     w1, f1 = bench.wheel, bench.fused
     print('nuage final...')
-    after = cloud(bench.fresh_scans())
+    after = cloud(bench, bench.fresh_scans())
 
     wheel_yaw, fused_yaw = wrap(w1[2] - w0[2]), wrap(f1 - f0)
     gyro_yaw = integrate(bench.gyro)

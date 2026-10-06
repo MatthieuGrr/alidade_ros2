@@ -80,7 +80,7 @@ def generate_launch_description():
         DeclareLaunchArgument('mode', default_value='IDLE',
                               description='mode initial du gestionnaire (IDLE, MAPPING, LOCALIZATION...)'),
         DeclareLaunchArgument('lidar', default_value='true',
-                              description='demarre rplidar_ros'),
+                              description='demarre sllidar_ros2'),
         DeclareLaunchArgument('camera', default_value='true',
                               description='demarre la RealSense si elle est branchee'),
         DeclareLaunchArgument('aruco', default_value='true',

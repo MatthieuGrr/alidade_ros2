@@ -13,10 +13,17 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE="${1:-$(cd "$HERE/../../.." && pwd)}"
 SRC="$WORKSPACE/src"
 
+# sllidar_ros2 est le pilote LiDAR officiel Slamtec pour ROS 2. Il REMPLACE
+# le paquet apt ros-jazzy-rplidar-ros, qui ne connait pas le C1 (sa propre
+# description dit « support rplidar A2/A1 and A3/S1 ») et ne demarre donc
+# jamais le capteur de facon fiable. Voir alidade_bringup/config/sllidar.yaml
+# pour le diagnostic complet.
+#
 # nom | depot | branche | commit
 SOURCES='
 vizanti | https://github.com/MoffKalast/vizanti.git | ros2 | 892f95171c259abdb09d8079c83021a830daf565
 frontier_exploration_ros2 | https://github.com/mertgulerx/frontier_exploration_ros2.git | main | ec530d2a813739cd25dd0c438d2365c510b9fad8
+sllidar_ros2 | https://github.com/Slamtec/sllidar_ros2.git | main | 34300099fadfc772965962dec837bf436706188f
 '
 
 mkdir -p "$SRC"

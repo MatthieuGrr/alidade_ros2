@@ -1,0 +1,80 @@
+# RPLIDAR C1 via sllidar_ros2, le pilote officiel Slamtec pour ROS 2, construit
+# depuis les sources (epingle dans system/sources.sh). Gabarit rendu au lancement.
+#
+# POURQUOI PAS ros-jazzy-rplidar-ros, et pourquoi avoir cherche si longtemps.
+#
+# Le paquet apt a ete utilise de septembre a octobre 2026. Il echouait 18 a 38
+# fois avant de demarrer, de 15 s a 7 MINUTES, sur un message opaque :
+#
+#     [rplidar] Cannot start scan: '80008002'
+#     [rplidar] Failed to set scan mode
+#
+# Ont ete soupconnes puis mis hors de cause, dans l'ordre : le support
+# mecanique, le hub USB, l'alimentation (une alimentation dediee a ete
+# achetee), le cable, et enfin un passage du capteur en UART direct sur le Pi.
+# Aucun n'etait en cause.
+#
+# LA CAUSE, mesuree le 6 octobre 2026. Le paquet apt annonce lui-meme son
+# perimetre : « The rplidar ros package, support rplidar A2/A1 and A3/S1 ».
+# Le C1 n'y figure pas, et le mot n'apparait nulle part dans le paquet. Il
+# embarque la SDK 1.12.0 et appelle une API depreciee qui ne demande pas au
+# capteur ce qu'il sait faire : elle lit son numero de firmware et le compare
+# a un seuil fixe pour la serie A,
+#
+#     if (devinfo.firmware_version >= ((0x1<<8) | 17))   // 1.17
+#
+# Le C1 annonce 1.02, soit 258 < 273 : verdict « express non supporte », repli
+# sur un chemin ou le balayage ne demarre pas. Le capteur, lui, est irreprochable
+# -- verifie en protocole brut : GET_LIDAR_CONF repond (2 modes, mode typique
+# = 1), et SCAN comme EXPRESS_SCAN rendent des donnees en moins de 500 ms.
+#
+# sllidar_ros2 (SDK 2.1.0) passe par getAllSupportedScanModes et negocie le
+# mode avec le capteur. Mesure sur le robot : 5 demarrages sur 5, 10 Hz, sans
+# aucun reset prealable. Le script lidar_reset.py, ecrit pour contourner le
+# probleme, a ete supprime -- il etait sans objet.
+#
+# A NE PAS REFAIRE : chercher un reglage de delai, un mode de balayage ou une
+# alimentation. Le pilote ne connaissait pas le capteur, c'est tout.
+sllidar:
+  ros__parameters:
+    use_sim_time: ${use_sim_time}
+    channel_type: serial
+    serial_port: /dev/rplidar
+    serial_baudrate: ${lidar.serial_baudrate}
+    frame_id: ${lidar.frame}
+    # `inverted` ne tourne pas le balayage : il inverse l'ORDRE de remplissage
+    # du tableau (variable `reverse_data` dans sllidar_node.cpp), donc il fait
+    # un MIROIR. Ce n'est pas ce qu'il nous faut -- voir ci-dessous.
+    inverted: false
+    # Reechantillonne chaque tour a un nombre de points fixe : 721, constants
+    # sur 10 messages consecutifs (mesure). Sans cela le nombre varie d'un tour
+    # a l'autre et slam_toolbox rejette les scans dont la taille change :
+    # « LaserRangeScan contains N range readings, expected M ».
+    angle_compensate: true
+    # Mode impose explicitement, comme le fait le lancement C1 de Slamtec.
+    scan_mode: Standard
+#
+# LE DEMI-TOUR, et ou il vit desormais.
+#
+# sllidar_node.cpp publie theta_ros = pi - theta_brut :
+#
+#     scan_msg->angle_min =  M_PI - angle_max;
+#     scan_msg->angle_max =  M_PI - angle_min;
+#
+# alors que la conversion juste, fleche du capteur alignee sur +x, est
+# theta_ros = -theta_brut : Slamtec compte les angles dans le sens HORAIRE
+# (repere gaucher, datasheet C1 figure 1-2, le 0 etant la fleche du dessus, a
+# l'oppose du cable), ROS dans le sens trigonometrique. L'ecart vaut donc
+# exactement +pi. C'est une convention du PILOTE, pas un defaut de montage :
+# rplidar_ros portait deja ces memes lignes.
+#
+# VERIFIE le 6 octobre 2026 : objet pose a l'arriere-droit du robot, rapporte
+# a +42 deg la ou on l'attend a -135. Soit -135 + 180, un demi-tour pur, sans
+# miroir (un miroir aurait donne +135, miroir et demi-tour -45).
+#
+# rplidar_ros offrait `flip_x_axis` pour cela. sllidar_node NE L'A PAS : ses
+# seuls parametres sont channel_type, serial_port, serial_baudrate, frame_id,
+# inverted, angle_compensate, scan_mode, scan_frequency et les variantes
+# TCP/UDP. La correction est donc passee dans `lidar.mount_rpy` de
+# alidade_description/config/alidade_v2.yaml, qui l'explique a son tour.
+# Ne pas la remettre ici : les deux se compenseraient.

@@ -7,12 +7,12 @@
 # centaines de datagrammes, et un seul fragment perdu jette le message entier
 # (voir README, pieges connus).
 #
-# ATTENTION. La DETECTION des marqueurs ne depend pas de la calibration : elle
-# ne fait que chercher des carres noirs et decoder leur damier. Les POSES, en
-# revanche, en dependent entierement. Tant que camera_v1.yaml porte des
-# intrinseques nominales, /aruco_detections et les TF marker_<id> ont un biais
-# d'echelle et ignorent la distorsion : bons pour verifier qu'on voit le cube
-# et a quelle distance, pas pour aller le chercher.
+# La DETECTION des marqueurs ne depend pas de la calibration : elle ne fait que
+# chercher des carres noirs et decoder leur damier. Les POSES, en revanche, en
+# dependent entierement -- et c'est regle depuis le D435i, qui publie des
+# intrinseques calibrees d'usine (voir config/camera.yaml). La mise en garde
+# qui vivait ici valait pour la C920, livree sans calibration : ses poses
+# portaient un biais d'echelle et ignoraient la distorsion.
 aruco_tracker:
   ros__parameters:
     use_sim_time: ${use_sim_time}

@@ -33,14 +33,6 @@ WorkingDirectory=@WORKSPACE@
 # systemd-time-wait-sync. Le remede materiel est une pile ML2020 sur le
 # connecteur BAT du Pi (README, Pieges connus).
 ExecStartPre=-/usr/bin/timeout 60 /bin/sh -c 'until [ -e /run/systemd/timesync/synchronized ]; do sleep 1; done'
-# Reveille le LiDAR avant que le driver ne lui parle. Sans ce reset, le C1
-# accepte la commande de balayage et n'emet rien : « Cannot start scan:
-# '80008002' », en boucle, parfois pendant des minutes. Mesure le 6 oct. 2026 :
-# 0 octet sur trois essais sans reset, 24 576 octets en 3 s apres. Voir
-# scripts/lidar_reset.py, qui explique le diagnostic complet. Prefixe `-` :
-# un LiDAR absent ne doit pas empecher le reste de la pile de se lancer et de
-# le signaler elle-meme.
-ExecStartPre=-@WORKSPACE@/install/alidade_bringup/lib/alidade_bringup/lidar_reset.py
 ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && source @WORKSPACE@/install/setup.bash && source @WORKSPACE@/src/alidade_ros2/system/env/alidade_env.sh && exec ros2 launch alidade_bringup robot.launch.py $ALIDADE_LAUNCH_ARGS'
 # ros2 launch arrete proprement ses noeuds sur SIGINT ; le Pico coupe de
 # toute facon ses moteurs 300 ms apres la derniere commande.

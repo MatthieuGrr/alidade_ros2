@@ -226,21 +226,36 @@ collisions:
 # v1, où il regardait par-dessus un châssis plus encombré.
 lidar:
   frame: laser
-  # Orientation du repère de MESURE. La CAO place le capteur mais ne dit pas où
-  # tombe son 0° ; ici elle suffit pourtant, et la correction est NULLE.
+  # Orientation du repère de MESURE — PAS celle du capteur sur le châssis.
   #
-  # La flèche du dessus du C1 EST le 0° du balayage (datasheet, figure 1-2 :
-  # l'axe de référence part du centre à travers le triangle, à l'opposé du
-  # câble), et elle est alignée sur +x. Le repère exporté est donc juste tel
-  # quel.
+  # Le matériel est monté droit : la flèche du dessus du C1 EST le 0° du
+  # balayage (datasheet, figure 1-2 : l'axe de référence part du centre à
+  # travers le triangle, à l'opposé du câble), et elle est alignée sur +x.
+  # Ce π ne décrit donc pas un capteur retourné — il n'y en a jamais eu un.
   #
-  # Une rotation de π traînait ici jusqu'au 28 septembre 2026. Elle compensait
-  # en réalité une convention du PILOTE, qui publie θ_ros = π − θ_brut là où la
-  # conversion juste est θ_ros = −θ_brut. La correction est passée où est sa
-  # cause : `flip_x_axis: true` dans config/rplidar.yaml, qui l'explique en
-  # détail. Ne pas remettre un angle ici sans avoir lu ce commentaire — les
-  # deux réglages se compensent, et les activer tous les deux ramène l'erreur.
-  mount_rpy: [0.0, 0.0, 0.0]
+  # Ce qu'il corrige est une convention du PILOTE. sllidar_node.cpp publie
+  # θ_ros = π − θ_brut (lignes 218-222) là où la conversion juste est
+  # θ_ros = −θ_brut : Slamtec compte les angles dans le sens horaire, ROS dans
+  # le sens trigonométrique. Le repère nommé `laser` dans les messages /scan
+  # est donc bel et bien tourné d'un demi-tour par rapport au capteur, et le
+  # déclarer ici est exact.
+  #
+  # MESURÉ le 6 octobre 2026 : objet posé à l'arrière-droit du robot, rapporté
+  # à +42° là où on l'attend à −135°. Soit −135 + 180, un demi-tour pur, sans
+  # miroir (un miroir aurait donné +135, miroir et demi-tour −45).
+  #
+  # Cette correction a déjà vécu ici, puis est partie le 28 septembre 2026 vers
+  # `flip_x_axis: true` de config/rplidar.yaml, au motif que le modèle doit
+  # décrire le matériel et non compenser un pilote. Elle revient parce que
+  # sllidar_node N'A PAS ce paramètre : ses seuls réglages sont channel_type,
+  # serial_port, serial_baudrate, frame_id, inverted, angle_compensate,
+  # scan_mode, scan_frequency et les variantes TCP/UDP. `inverted` ne convient
+  # pas, il fait un miroir et non une rotation.
+  #
+  # Il n'y a donc PLUS de réglage équivalent côté pilote : ne pas chercher à en
+  # ajouter un, et surtout ne pas corriger aux deux endroits à la fois.
+  # Contrôle : scripts/lidar_zero.py.
+  mount_rpy: [0.0, 0.0, 3.141592653589793]
   rotation_hz: 10            # 8-12 Hz possibles
   samples_per_rev: 500       # 5 kHz / 10 Hz, soit 0.72°
   range_min: 0.05

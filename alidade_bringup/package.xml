@@ -19,12 +19,14 @@
   <exec_depend>lifecycle_msgs</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <!-- utilise par gyro_odom.py, cube_detector.py, aruco_bench.py, lidar_zero.py -->
+  <exec_depend>tf2_ros</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>controller_manager</exec_depend>
   <exec_depend>joint_state_broadcaster</exec_depend>
   <exec_depend>diff_drive_controller</exec_depend>
   <exec_depend>imu_sensor_broadcaster</exec_depend>
-  <exec_depend>rplidar_ros</exec_depend>
+  <exec_depend>sllidar_ros2</exec_depend>
   <exec_depend>image_transport_plugins</exec_depend>
   <exec_depend>realsense2_camera</exec_depend>
   <exec_depend>aruco_opencv</exec_depend>

@@ -4,10 +4,15 @@ LaserScan, ou apres un delai maximal.
 
 nav2 n'a aucun sens sans scan : sa costmap globale attend le repere map, que
 slam_toolbox ne publie qu'apres avoir traite un premier scan, et abandonne
-apres initial_transform_timeout (60 s). Or rplidar_ros met de 15 s a plus de
-deux minutes a demarrer le C1 (voir README, pieges connus) : sans barriere le
-gestionnaire de cycle de vie de nav2 abandonne tout le bringup et ne reessaie
-jamais. On enchaine donc nav.launch.py sur la fin de ce processus.
+apres initial_transform_timeout (60 s) : sans barriere le gestionnaire de
+cycle de vie de nav2 abandonne tout le bringup et ne reessaie jamais. On
+enchaine donc nav.launch.py sur la fin de ce processus.
+
+Cette barriere a d'abord servi a encaisser les 15 s a 7 minutes que mettait
+l'ancien pilote apt a demarrer le C1. sllidar_ros2 demarre en une demi-seconde
+et la barriere n'a plus ce role, mais elle garde le sien : un LiDAR debranche,
+un cable coupe ou un capteur en panne ne doivent pas faire tomber nav2 en
+silence.
 
     ros2 run alidade_bringup wait_for_scan.py --ros-args -p topic:=/scan -p timeout:=600.0
 """
