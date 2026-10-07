@@ -98,6 +98,21 @@ motor:
   # travers. À vérifier au banc, montre en main, avant de remonter.
   max_linear_acceleration: 0.65 # m/s²
   max_angular_acceleration: 3.5 # rad/s², à revérifier : l'inertie a augmenté
+  # MESURÉ au banc le 7 octobre 2026 (consigne de roue contre vitesse atteinte,
+  # lue dans /joint_states). La boucle du Pico est excellente là où elle
+  # travaille — gain 1.00 à 1.03, asymétrie gauche/droite ≤ 2 % — mais elle a un
+  # plancher de frottement sec :
+  #
+  #   ≤ 0.15 rad/s de roue   les deux roues restent EXACTEMENT à zéro
+  #   0.2 à 0.6 rad/s        collage-décollage, gain de 0.24 à 1.35 d'un essai
+  #                          à l'autre à consigne identique, non reproductible
+  #   ≥ 0.7 rad/s            propre, gain 1.00 ± 0.03
+  #
+  # Identique en rotation sur place et en ligne droite (vérifié) : la roue folle
+  # n'y est pour rien, c'est le motoréducteur. Ne pas asservir sous ce plancher ;
+  # nav2 n'y descend pas (regulated_linear_scaling_min_speed 0.10 m/s, soit
+  # 2.0 rad/s de roue, et rotate_to_heading_angular_vel 1.0 rad/s).
+  min_wheel_velocity: 0.7       # rad/s, en deçà l'asservissement n'est pas fiable
 
 # ---------------------------------------------------------------------------
 # Empreinte, depuis base_footprint. Mesurée sur l'enveloppe des maillages de

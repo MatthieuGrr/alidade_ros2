@@ -40,6 +40,17 @@ Resultats a reporter dans alidade_<revision>.yaml : kinematics pour les roues,
 imu.gyro_scale pour le gyromètre. Mesure du 12 sept. 2026 : roues 0.9975 a
 1.0061, gyromètre 1.029 (d'ou gyro_scale 0.9718), fusion 0.9989.
 
+CAMPAGNE DU 7 OCTOBRE 2026, apres le passage a sllidar_ros2. Trois rotations de
+2 tours (deux anti-horaire, une horaire) : roues 1.0026 / 1.0036 / 1.0016,
+gyromètre 1.0285 / 1.0285 / 1.0331, fusion 0.9997 / 0.9992 / 1.0045. Une ligne
+droite de 1 m a 0.15 m/s, 330 appariements : distance roues +0.12 %, cap +0.66
+deg (fusion +0.58). RIEN N'A ETE CHANGE dans la revision, et c'est le resultat :
+l'ecart des roues en rotation, +0.26 % de biais systematique, est du MEME ORDRE
+que la resolution du juge -- le residu du recalage est quantifie au degre et
+s'etale sur +/-1.5 deg de 720, soit +/-0.2 %. Corriger wheel_separation sur
+cette base serait courir apres le bruit du banc. L'echelle du gyromètre, elle,
+est confirmee a 0.05 % pres.
+
 Degager un metre autour du robot.
 """
 import argparse
@@ -55,6 +66,8 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Imu, LaserScan
 from tf2_ros import Buffer, TransformListener
+
+from alidade_bringup import odometry
 
 BINS = 360
 
@@ -107,6 +120,7 @@ class Bench(Node):
         self.tampon = Buffer()
         self.ecoute = TransformListener(self.tampon, self)
         self._laser = None      # (x, y, lacet) du capteur dans base_link, mis en cache
+        self._rot_imu = None    # rotation IMU -> base_link, mise en cache
 
     def on_wheel(self, m):
         p = m.pose.pose
@@ -115,12 +129,50 @@ class Bench(Node):
     def on_fused(self, m):
         self.fused = yaw_of(m.pose.pose.orientation)
 
+    def rot_imu(self, frame: str):
+        """Rotation IMU -> base_link, lue dans TF une fois (joint fixe).
+
+        L'IMU de ce robot est montee TETE EN BAS : son z pointe vers le sol, et
+        sa vitesse angulaire z brute a donc le signe OPPOSE a celle du robot.
+        Prendre `angular_velocity.z` tel quel -- ce que faisait ce script
+        jusqu'au 7 octobre 2026 -- rendait un rapport gyrometre/vrai de -1.0286
+        la ou gyro_odom.py, qui passe par TF, trouvait la fusion a 0.9997. La
+        magnitude etait bonne, le signe faux : une erreur qui ne se voit pas si
+        on ne regarde que la valeur absolue.
+        """
+        if self._rot_imu is None:
+            try:
+                tf = self.tampon.lookup_transform('base_link', frame, rclpy.time.Time())
+            except Exception:
+                return None
+            q = tf.transform.rotation
+            self._rot_imu = odometry.rotation_from_quaternion(q.x, q.y, q.z, q.w)
+            sens = ('a l endroit' if self._rot_imu[2][2] > 0
+                    else 'A L ENVERS (z du capteur vers le bas)')
+            print(f'IMU {frame} : {sens}, wz -> {self._rot_imu[2][2]:+.3f}')
+        return self._rot_imu
+
     def on_imu(self, m):
+        rot = self.rot_imu(m.header.frame_id)
+        if rot is None:
+            return
         t = rclpy.time.Time.from_msg(m.header.stamp).nanoseconds * 1e-9
-        self.gyro.append((t, m.angular_velocity.z))
+        g = m.angular_velocity
+        self.gyro.append((t, odometry.yaw_rate(rot, (g.x, g.y, g.z))))
 
     def ready(self):
-        while self.wheel is None or self.fused is None or len(self.scans) < 3:
+        # On attend AUSSI un echantillon de gyrometre : il n'arrive qu'une fois
+        # la rotation IMU -> base_link disponible dans TF, et sans elle les
+        # chiffres du gyrometre seraient faux de signe sans le dire.
+        fin = time.time() + 20.0
+        while (self.wheel is None or self.fused is None or len(self.scans) < 3
+               or not self.gyro):
+            if time.time() > fin:
+                manque = [n for n, ok in (('odometrie roues', self.wheel is not None),
+                                          ('/odom', self.fused is not None),
+                                          ('/scan', len(self.scans) >= 3),
+                                          ('gyrometre via TF', bool(self.gyro))) if not ok]
+                raise SystemExit('REFUS : rien recu en 20 s pour ' + ', '.join(manque))
             rclpy.spin_once(self, timeout_sec=0.1)
 
     def drive(self, v=0.0, w=0.0):
