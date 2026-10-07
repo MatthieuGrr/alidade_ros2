@@ -13,11 +13,14 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE="${1:-$(cd "$HERE/../../.." && pwd)}"
 SRC="$WORKSPACE/src"
 
-# sllidar_ros2 est le pilote LiDAR officiel Slamtec pour ROS 2. Il REMPLACE
-# le paquet apt ros-jazzy-rplidar-ros, qui ne connait pas le C1 (sa propre
-# description dit « support rplidar A2/A1 and A3/S1 ») et ne demarre donc
-# jamais le capteur de facon fiable. Voir alidade_bringup/config/sllidar.yaml
-# pour le diagnostic complet.
+# sllidar_ros2 est le paquet LiDAR ROS 2 de Slamtec. Il est bati ICI, depuis les
+# sources, et non pris dans apt -- parce que AUCUN paquet apt ne sait piloter un
+# C1, ni sous ce nom ni sous celui de rplidar_ros. Ce n'est pas une question de
+# depot mais de PUBLICATION : le support du C1 existe dans la branche ros2 de
+# rplidar_ros, mais dans « Forthcoming », jamais publiee (derniere release 2.1.4,
+# aout 2023 ; Jazzy en livre une de septembre 2022). Compiler cette branche-la
+# aurait marche aussi bien. Voir alidade_bringup/config/sllidar.yaml pour le
+# diagnostic complet.
 #
 # nom | depot | branche | commit
 SOURCES='

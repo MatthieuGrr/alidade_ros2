@@ -1,7 +1,7 @@
 # RPLIDAR C1 via sllidar_ros2, le pilote officiel Slamtec pour ROS 2, construit
 # depuis les sources (epingle dans system/sources.sh). Gabarit rendu au lancement.
 #
-# POURQUOI PAS ros-jazzy-rplidar-ros, et pourquoi avoir cherche si longtemps.
+# POURQUOI PAS LE PAQUET APT, et pourquoi avoir cherche si longtemps.
 #
 # Le paquet apt a ete utilise de septembre a octobre 2026. Il echouait 18 a 38
 # fois avant de demarrer, de 15 s a 7 MINUTES, sur un message opaque :
@@ -14,27 +14,49 @@
 # achetee), le cable, et enfin un passage du capteur en UART direct sur le Pi.
 # Aucun n'etait en cause.
 #
-# LA CAUSE, mesuree le 6 octobre 2026. Le paquet apt annonce lui-meme son
-# perimetre : « The rplidar ros package, support rplidar A2/A1 and A3/S1 ».
-# Le C1 n'y figure pas, et le mot n'apparait nulle part dans le paquet. Il
-# embarque la SDK 1.12.0 et appelle une API depreciee qui ne demande pas au
-# capteur ce qu'il sait faire : elle lit son numero de firmware et le compare
-# a un seuil fixe pour la serie A,
+# LA CAUSE, mesuree le 6 octobre 2026 : le BINAIRE installe, 2.1.0, embarque la
+# SDK 1.12.0 et appelle une API depreciee qui ne demande pas au capteur ce qu'il
+# sait faire. Elle lit son numero de firmware et le compare a un seuil ecrit
+# pour la serie A,
 #
 #     if (devinfo.firmware_version >= ((0x1<<8) | 17))   // 1.17
 #
 # Le C1 annonce 1.02, soit 258 < 273 : verdict « express non supporte », repli
-# sur un chemin ou le balayage ne demarre pas. Le capteur, lui, est irreprochable
-# -- verifie en protocole brut : GET_LIDAR_CONF repond (2 modes, mode typique
-# = 1), et SCAN comme EXPRESS_SCAN rendent des donnees en moins de 500 ms.
+# sur un chemin ou le balayage ne demarre pas. Le numero est bas parce que le C1
+# est une gamme NEUVE qui repart de zero, pas un capteur ancien. Le capteur est
+# irreprochable -- verifie en protocole brut : GET_LIDAR_CONF repond (2 modes,
+# mode typique = 1), et SCAN comme EXPRESS_SCAN rendent des donnees en moins de
+# 500 ms. Confirme par strace : apres « A5 25 » puis « A5 20 », zero octet
+# pendant les 2 s que le pilote accorde.
 #
-# sllidar_ros2 (SDK 2.1.0) passe par getAllSupportedScanModes et negocie le
-# mode avec le capteur. Mesure sur le robot : 5 demarrages sur 5, 10 Hz, sans
-# aucun reset prealable. Le script lidar_reset.py, ecrit pour contourner le
-# probleme, a ete supprime -- il etait sans objet.
+# CE QUI N'EST PAS LA CAUSE, et c'est une erreur que j'ai commise et propagee :
+# « rplidar_ros ne supporte pas le C1 ». FAUX au niveau du projet. Sa branche
+# ros2 liste le C1 et fournit view_rplidar_c1_launch.py. Mais ce support vit
+# dans « Forthcoming » : JAMAIS PUBLIE. Derniere release 2.1.4 (aout 2023),
+# Jazzy en livre 2.1.0 (septembre 2022), anterieure au C1 lui-meme.
+#
+# Le vrai critere est donc PUBLIE contre COMPILE DEPUIS LES SOURCES, pas un
+# depot contre l'autre. Aucun paquet apt, sous l'un ou l'autre nom, ne pilote un
+# C1 ; batir la branche ros2 de rplidar_ros aurait marche aussi bien. On a pris
+# sllidar_ros2 parce que c'est le paquet ROS 2 que Slamtec maintient, avec un
+# lancement C1 et la SDK 2.1.0.
+#
+# ET NE PAS SE FIER AUX DESCRIPTIONS DE PAQUET. J'ai cru trouver une preuve dans
+# celle du paquet apt (« support rplidar A2/A1 and A3/S1 », sans C1). Elle ne
+# prouve rien : la MEME chaine figure dans le package.xml de sllidar_ros2, qui
+# pilote le C1 tres bien, et celle de rplidar_ros 2.1.4 ne mentionne pas le C1
+# alors que son README le liste. C'est du texte recopie que personne ne tient a
+# jour. La preuve etait dans le code, pas dans l'etiquette.
+#
+# sllidar_ros2 (SDK 2.1.0) passe par getAllSupportedScanModes et negocie le mode
+# avec le capteur. Mesure sur le robot : 5 demarrages sur 5, 10 Hz, sans aucun
+# reset prealable, et 0 echec au demarrage a froid. Le script lidar_reset.py,
+# ecrit pour contourner le probleme, a ete supprime -- il etait sans objet.
 #
 # A NE PAS REFAIRE : chercher un reglage de delai, un mode de balayage ou une
-# alimentation. Le pilote ne connaissait pas le capteur, c'est tout.
+# alimentation. Et ne pas conclure d'un code d'erreur hexadecimal a une panne
+# materielle : « 80008002 » est RESULT_OPERATION_TIMEOUT, ce qui evoque un cable
+# ou une alimentation et designe le mauvais coupable.
 sllidar:
   ros__parameters:
     use_sim_time: ${use_sim_time}

@@ -553,9 +553,9 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   les deux ne coïncident pas, ce qui est sans conséquence dans un run donné
   mais reste à aligner si on compare finement simulation et réel.
 - Le pilote est `sllidar_ros2`, construit depuis les sources et épinglé dans
-  `system/sources.sh`, **pas** le paquet apt `ros-jazzy-rplidar-ros` : celui-ci
-  ne connaît pas le C1 et ne le démarre jamais de façon fiable (voir « Le
-  LiDAR ne démarrait pas » plus bas, et le commentaire de `sllidar.yaml`).
+  `system/sources.sh`, et **pas** un paquet apt : aucun paquet publié ne sait
+  piloter un C1, ni sous ce nom ni sous celui de `rplidar_ros` (voir « Le LiDAR
+  ne démarrait pas » plus bas, et le commentaire de `sllidar.yaml`).
   Sans garde-fou, la costmap globale de nav2 expire (60 s) en attendant le
   repère `map`, que `slam_toolbox` ne publie qu'après un premier scan, et le
   lifecycle manager abandonne tout le bringup sans jamais réessayer. D'où
@@ -621,17 +621,33 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   7 minutes avant qu'un scan sorte. Ont été soupçonnés puis mis hors de cause :
   le support mécanique, le hub USB, l'alimentation (une alimentation dédiée a
   été achetée), le câble, et un passage du capteur en UART direct sur le Pi.
-  La cause était le pilote. `ros-jazzy-rplidar-ros` annonce lui-même son
-  périmètre — « support rplidar A2/A1 and A3/S1 » — et le C1 n'y figure pas.
-  Il embarque la SDK 1.12.0, dont l'API dépréciée ne demande pas au capteur ce
-  qu'il sait faire : elle compare son firmware à un seuil fixé pour la série A
+  La cause était le **binaire installé**. `ros-jazzy-rplidar-ros` 2.1.0 embarque
+  la SDK 1.12.0, dont l'API dépréciée ne demande pas au capteur ce qu'il sait
+  faire : elle compare son firmware à un seuil fixé pour la série A
   (`>= ((0x1<<8) | 17)`, soit 1.17). Le C1 annonce 1.02, donc 258 < 273, et le
-  pilote se replie sur un chemin où le balayage ne démarre jamais. Le capteur
-  était irréprochable de bout en bout : en protocole brut, `GET_LIDAR_CONF`
-  répond et `SCAN` rend des données en moins de 500 ms. Avec `sllidar_ros2`
-  (SDK 2.1.0), qui négocie le mode par `getAllSupportedScanModes` : 5 démarrages
-  sur 5, en une demi-seconde. **La leçon** : un code d'erreur hexadécimal peut
-  vouloir dire « ce pilote ne connaît pas ce capteur », et aucune mesure
+  pilote se replie sur un chemin où le balayage ne démarre jamais. Ce numéro est
+  bas parce que le C1 est une gamme neuve repartie de zéro, pas un capteur
+  ancien. Le capteur était irréprochable de bout en bout : en protocole brut,
+  `GET_LIDAR_CONF` répond et `SCAN` rend des données en moins de 500 ms. Avec
+  `sllidar_ros2` (SDK 2.1.0), qui négocie le mode par `getAllSupportedScanModes` :
+  5 démarrages sur 5, en une demi-seconde, et 0 échec au démarrage à froid.
+
+  **Ce n'est PAS « `rplidar_ros` ne supporte pas le C1 »**, erreur que ce fichier
+  a d'abord affirmée. Sa branche `ros2` liste le C1 et fournit un
+  `view_rplidar_c1_launch.py` ; mais ce support vit dans « Forthcoming », jamais
+  publiée — dernière release 2.1.4 (août 2023), et Jazzy en livre une de
+  septembre 2022, antérieure au C1. Le vrai critère est **publié contre compilé
+  depuis les sources**, pas un dépôt contre l'autre : bâtir la branche `ros2` de
+  `rplidar_ros` aurait marché aussi bien.
+
+  **Et ne pas se fier aux descriptions de paquet.** « support rplidar A2/A1 and
+  A3/S1 » avait l'air d'une preuve : la même chaîne figure dans le `package.xml`
+  de `sllidar_ros2`, qui pilote le C1 sans broncher, et celle de `rplidar_ros`
+  2.1.4 ne mentionne pas le C1 alors que son README le liste. Du texte recopié
+  que personne ne tient à jour.
+
+  **La leçon** : un code d'erreur hexadécimal peut vouloir dire « ce binaire est
+  trop vieux pour ce capteur », et aucune mesure
   électrique ne le dira.
 - **Débrancher le Pico arrête toute la pile**, par `BindsTo=dev-pico.device`
   dans le service : c'est la sécurité voulue, les moteurs se coupent. Mais

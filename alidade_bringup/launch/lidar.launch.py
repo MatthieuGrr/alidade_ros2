@@ -1,8 +1,8 @@
 """RPLIDAR C1 sur /dev/rplidar, publie /scan dans le repere 'laser'.
 
-Pilote : sllidar_ros2, construit depuis les sources (system/sources.sh). Le
-paquet apt ros-jazzy-rplidar-ros ne connait pas le C1 ; config/sllidar.yaml
-explique pourquoi et ce que ca a coute.
+Pilote : sllidar_ros2, construit depuis les sources (system/sources.sh), car
+aucun paquet apt ne sait piloter un C1 -- pas davantage sous le nom rplidar_ros.
+config/sllidar.yaml explique pourquoi et ce que ca a coute.
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
