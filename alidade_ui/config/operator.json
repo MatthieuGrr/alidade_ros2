@@ -31,7 +31,7 @@
   "teleop_default": { "topic": "/cmd_vel_nav",
                       "typedict": { "/cmd_vel_nav": "geometry_msgs/msg/Twist" },
                       "joy_offset_x": 0, "joy_offset_y": 0, "opacity": 0.6, "color": "#0b7285" },
-  "camera_default": { "topic": "/camera/image_raw/compressed", "img_offset_x": 0, "img_offset_y": 0,
+  "camera_default": { "topic": "/camera/color/image_raw/compressed", "img_offset_x": 0, "img_offset_y": 0,
                       "throttle": 200, "opacity": 1.0, "width": 30, "rotation": 0 },
   "cube_markers": { "topic": "/cube/markers", "throttle": 100, "opacity": 1.0, "disabled_namespaces": [] },
   "diagnostics_default": { "topic": "/diagnostics_agg", "throttle": 1000, "opened": [] }

@@ -27,6 +27,8 @@
   <exec_depend>diff_drive_controller</exec_depend>
   <exec_depend>imu_sensor_broadcaster</exec_depend>
   <exec_depend>sllidar_ros2</exec_depend>
+  <!-- republieur JPEG compose dans le conteneur camera (camera.launch.py) -->
+  <exec_depend>image_transport</exec_depend>
   <exec_depend>image_transport_plugins</exec_depend>
   <exec_depend>realsense2_camera</exec_depend>
   <exec_depend>aruco_opencv</exec_depend>

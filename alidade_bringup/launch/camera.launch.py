@@ -108,6 +108,33 @@ def setup(context):
                 parameters=[cfg['camera']['ros__parameters']],
                 extra_arguments=[{'use_intra_process_comms': True}],
             ),
+            # Flux JPEG pour l'interface web. Il est INDISPENSABLE et pas un
+            # luxe : Vizanti passe par rosbridge, qui ne transporte que du
+            # CompressedImage -- une image brute de 900 ko en base64 dans du
+            # JSON n'est pas une option. Mesure du 8 octobre 2026 : 42.3 ko par
+            # image, 21 fois moins que le brut, 658 ko/s a 15 Hz.
+            #
+            # Pourquoi un republieur plutot que le `/compressed` d'image_transport :
+            # le pilote RealSense n'en publie AUCUN ici. Aucun topic compresse
+            # n'existait avant ce noeud, ni pour la couleur ni pour le debug
+            # ArUco -- les deux noeuds concernes tournant en intra-processus.
+            #
+            # Pourquoi DANS le conteneur : il recoit alors les images sans copie
+            # et ne met sur le reseau que le JPEG. Dehors, il faudrait faire
+            # transiter 13.8 Mo/s de brut par la boucle locale pour rien.
+            #
+            # Il encode meme sans abonne (verifie : 15 Hz avec zero ecoutant),
+            # ce qui coute quelques pour cent d'un coeur sur un Pi 5. On
+            # l'accepte pour que la vue operateur fonctionne sans manipulation.
+            ComposableNode(
+                package='image_transport', plugin='image_transport::Republisher',
+                name='camera_republisher', namespace='',
+                parameters=[{'in_transport': 'raw', 'out_transport': 'compressed'}],
+                remappings=[('in', f"/{hw['camera']['name']}/color/image_raw"),
+                            ('out/compressed',
+                             f"/{hw['camera']['name']}/color/image_raw/compressed")],
+                extra_arguments=[{'use_intra_process_comms': True}],
+            ),
             *nodes,
         ],
     )]

@@ -614,8 +614,16 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   `/camera/image/compressed`, n'affichait plus rien. D'où `camera.launch.py`
   sans aucun remappage : les noms par défaut du pilote sous `/camera` sont
   les bons.
-- `image_transport` réencode un JPEG pour `/camera/color/image_raw/compressed` :
-  le flux compressé coûte du CPU, mais seulement quand quelqu'un le regarde.
+- **Le pilote RealSense ne publie aucun flux compressé** — ni pour la couleur,
+  ni pour le debug ArUco. Vérifié le 8 octobre 2026 : avant correctif, aucun
+  topic `/compressed` n'existait, les deux nœuds concernés tournant en
+  intra-processus. Or Vizanti passe par rosbridge, qui ne transporte que du
+  `CompressedImage` : sans flux compressé, **la vue caméra de l'interface web
+  reste noire**. D'où un `image_transport::Republisher` composé dans le
+  conteneur caméra (`camera.launch.py`) : il reçoit les images sans copie et ne
+  met sur le réseau que le JPEG, 42,3 ko par image contre 900 ko en brut, soit
+  658 ko/s à 15 Hz. Il encode même sans abonné — quelques pour cent d'un cœur,
+  assumés pour que la vue fonctionne sans manipulation.
 - **L'accéléromètre du BNO055 n'est pas calibré et ne sert à rien tel quel.**
   Le firmware du Pico n'écrit aucun décalage (la calibration en six positions
   n'a jamais été faite, et l'état `CALIB_STAT` ne sort que sur l'UART du Pico,
