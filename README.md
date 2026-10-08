@@ -510,6 +510,19 @@ avec la limite `rtprio` correspondante dans `/etc/security/limits.d/`.
   Rien ne signale la cause. Cela ressemble à un nœud bloqué, et une session
   entière s'est perdue à chercher un interblocage dans `mode_manager` qui
   répondait très bien.
+- **Ajouter une ligne à `system/apt-packages.txt` n'installe rien.** Il faut
+  rejouer `sudo ./src/alidade_ros2/system/install.sh` sur le Pi, et rien ne le
+  rappelle. Vécu le 8 octobre 2026 : `ros-jazzy-realsense2-camera` était déclaré
+  depuis la révision v2 mais absent du robot, et le conteneur caméra échouait sur
+  `Could not find requested resource in ament index` — message qui désigne le
+  nom du composant, pas le paquet manquant. Pire, `camera.launch.py` saute le
+  conteneur quand aucune caméra n'est branchée : l'erreur est restée invisible
+  jusqu'au premier branchement. Pour vérifier d'un coup ce qui manque :
+  ```bash
+  while read -r p; do case "$p" in ''|\#*) continue;; esac
+    dpkg -s "$p" >/dev/null 2>&1 || echo "MANQUE : $p"
+  done < system/apt-packages.txt
+  ```
 - Un appel de service `gz` sur un monde qui **n'existe pas** n'échoue pas : il
   **expire**. Le message parle alors de délai et on cherche une lenteur pendant
   que la scène reste vide. Vérifier le nom du monde (`gz topic -l`) avant de
