@@ -42,8 +42,6 @@ provisional:
   masses.base_link: pesée de la v1, châssis depuis agrandi
   masses.wheel_left_link: pesée des roues Ø64
   masses.wheel_right_link: pesée des roues Ø64
-  camera.mount_link: le repère CAO tombe sur la vis à 1.5 mm de ce que prédisent
-    les constantes Intel ; un contrôle au réglet sur le robot lèverait le doute
 
 # ---------------------------------------------------------------------------
 # Cinématique différentielle.
@@ -130,7 +128,11 @@ footprint:
   robot_radius: 0.24           # valeur nav2, arrondie au-dessus
   length: 0.2541               # encombrement au sol, selon X (-0.1992 .. +0.0549)
   width: 0.2520                # selon Y, pneus compris (±0.126)
-  height: 0.1759               # point le plus haut : le LiDAR
+  # Point le plus haut : le LiDAR, dont le corps dépasse de 10.7 mm le plan de
+  # scan (origine visuelle du maillage à -30.6 mm, enveloppe +41.3 mm). Suit
+  # donc `frames.expected.laser` : 0.1742 + 0.0107. La caméra culmine vers
+  # 0.166 m, plus bas. Valeur DOCUMENTAIRE, aucun code ne la lit.
+  height: 0.1849
   front_x: 0.052               # face avant du plateau ; depuis le ré-export du
                                # 28 sept. 2026 la caméra ne dépasse plus (0.025)
 
@@ -145,9 +147,15 @@ frames:
     base_link:            [ 0.0520,  0.0,     0.0706]
     wheel_left_link:      [ 0.0,     0.1125,  0.0500]
     wheel_right_link:     [ 0.0,    -0.1125,  0.0500]
-    laser:                [-0.0998,  0.0,     0.1652]
+    # Ré-export du 8 octobre 2026, recalé sur le robot PHYSIQUE : le LiDAR est
+    # monté de 9.0 mm (laser_joint 0.0895963 -> 0.0985963) et un maillon
+    # `camera_adaptor` s'intercale entre base_link et camera_mount_link, qui
+    # recule de 43.5 mm et monte de 25.0 mm (écart total 50.17 mm). Les deux
+    # rotations de pi de l'adaptateur s'annulent : la caméra regarde toujours
+    # +x, sans inclinaison.
+    laser:                [-0.0998,  0.0,     0.1742]
     imu_link:             [-0.0019, -0.0026,  0.0660]
-    camera_mount_link:    [ 0.0120,  0.0,     0.1156]
+    camera_mount_link:    [-0.0315,  0.0,     0.1406]
     caster_wheel_link:    [-0.1888,  0.0187,  0.0706]
 
 # ---------------------------------------------------------------------------
@@ -296,12 +304,25 @@ lidar:
 camera:
   frame: camera_color_optical_frame   # publié par le driver, ou par la macro en simulation
   mount_link: camera_mount_link
-  # Décalage du point de fixation depuis `mount_link`. NUL depuis le ré-export
-  # du 28 septembre 2026 : la CAO place le repère directement sur le trou de
-  # fixation du D435i, qui est ce que la macro attend. Vérifié contre
-  # l'enveloppe du maillage — le centre optique de profondeur retombe à 1.5 mm
-  # près de là où les constantes Intel le placent, soit dans le bruit de lecture
-  # d'une boîte englobante.
+  # Décalage du point de fixation depuis `mount_link`. NUL : la CAO place le
+  # repère directement sur le trou de fixation du D435i, qui est ce que la
+  # macro attend.
+  #
+  # MESURÉ SUR LE ROBOT le 8 octobre 2026, premier branchement de la caméra, et
+  # ce n'est plus une valeur provisoire. Méthode : ajustement RANSAC du plan du
+  # SOL sur l'image de profondeur, ramené dans base_link par TF — contraint en
+  # orientation seulement, jamais en position, donc sans circularité.
+  #
+  #   hauteur du centre optique   152.6 mm mesurés contre 153.1 modelés  -0.5 mm
+  #   plan du sol                 +1.3 mm du z attendu
+  #   inclinaison du montage      0.68 deg
+  #   un mur, caméra contre LiDAR -1.3 mm (-0.20 %) et 0.42 deg
+  #
+  # 17 000 inliers de part et d'autre, résidus de 1.5 et 2.2 mm, et deux
+  # capteurs indépendants qui concordent. Cette mesure a d'ailleurs DÉTECTÉ
+  # l'erreur avant la correction CAO : elle annonçait la caméra 19 à 31 mm plus
+  # haute que le modèle, et le ré-export recalé sur le robot physique l'a
+  # relevée de 25.0 mm.
   #
   # C'est le bon partage : la CAO décrit une VIS, feature physique et mesurable ;
   # la géométrie interne du capteur reste chez son fabricant. Un décalage non nul
@@ -318,12 +339,20 @@ camera:
   # la bande passante USB ; le D435i monte à 1920x1080 si besoin.
   width: 640
   height: 480
-  fps: 15.0                    # flottant : plusieurs gabarits déclarent un double
+  # ENTIER OBLIGATOIRE, et c'est contre-intuitif : cette valeur part dans la
+  # chaîne de profil `${camera.width}x${camera.height}x${camera.fps}` que le
+  # pilote RealSense exige sous la forme `640x480x15`. Déclarée `15.0`, elle
+  # rendait `640x480x15.0`, que le pilote REFUSE — en se rabattant en silence
+  # sur 1280x720x30, soit 83 Mo/s au lieu de 13.8 sur un Pi 5. Mesuré le
+  # 8 octobre 2026, premier branchement de la caméra. Les deux autres
+  # consommateurs s'en moquent : system_monitor fait `float(hz)` et Gazebo prend
+  # l'entier dans `<update_rate>`.
+  fps: 15
   # Flux profondeur. Non exploité pour l'instant, mais publié : c'est la raison
   # d'être de ce capteur, et l'activer coûte peu.
   depth_width: 640
   depth_height: 480
-  depth_fps: 15.0
+  depth_fps: 15              # entier, même raison que camera.fps
   enable_depth: true
   enable_infra: false          # les deux infrarouges ne servent pas ici
   pointcloud: false            # coûteux sur un Pi 5 ; à activer au besoin

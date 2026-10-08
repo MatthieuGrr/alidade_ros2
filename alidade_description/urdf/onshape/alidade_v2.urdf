@@ -48,6 +48,22 @@
             </material>
         </visual>
     </link>
+    <link name="camera_adaptor">
+        <inertial>
+            <mass value="2.69817e-05" />
+            <origin xyz="0.0175 -0.06 0.0025" rpy="0 -0 0" />
+            <inertia ixx="3.68198e-08" ixy="0" ixz="0" iyy="4.22246e-09" iyz="0" izz="4.09298e-08" />
+        </inertial>
+        <visual>
+            <origin xyz="0.0175 -0.06 0" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://alidade_v2/meshes/camera_adaptor.stl" scale="1 1 1" />
+            </geometry>
+            <material name="0.615686_0.811765_0.929412_0.000000_0.000000">
+                <color rgba="0.615686 0.811765 0.929412 1" />
+            </material>
+        </visual>
+    </link>
     <link name="camera_mount_link">
         <inertial>
             <mass value="3.8641e-05" />
@@ -338,7 +354,7 @@
         </visual>
     </link>
     <joint name="base_joint" type="fixed">
-        <origin xyz="0.052 0 0.070601" rpy="-2.66454e-15 -2.66241e-30 1.77494e-30" />
+        <origin xyz="0.052 0 0.070601" rpy="-7.99361e-15 5.45793e-29 3.9968e-15" />
         <axis xyz="0 0 1" />
         <parent link="root" />
         <child link="base_link" />
@@ -350,19 +366,25 @@
         <child link="battery_link" />
     </joint>
     <joint name="battery_tray_joint" type="fixed">
-        <origin xyz="-0.153984 -3.0166e-17 0.005" rpy="-2.66454e-15 3.65464e-30 -7.88861e-31" />
+        <origin xyz="-0.153984 -2.41044e-18 0.005" rpy="2.66454e-15 -2.55579e-29 -3.9968e-15" />
         <axis xyz="0 0 -1" />
         <parent link="base_link" />
         <child link="battery_tray_link" />
     </joint>
-    <joint name="camera_mount_joint" type="fixed">
-        <origin xyz="-0.04 -1.2326e-32 0.045" rpy="1.45363e-17 6.12323e-17 4.45045e-34" />
-        <axis xyz="-6.12323e-17 1.45363e-17 1" />
+    <joint name="camera_adaptor_joint" type="fixed">
+        <origin xyz="-0.066 -0.06 0.065" rpy="-7.99361e-15 2.66454e-15 3.14159" />
+        <axis xyz="0 0 1" />
         <parent link="base_link" />
+        <child link="camera_adaptor" />
+    </joint>
+    <joint name="camera_mount_joint" type="fixed">
+        <origin xyz="0.0175 -0.06 0.005" rpy="1.45363e-17 6.12323e-17 -3.14159" />
+        <axis xyz="-6.12323e-17 1.45363e-17 1" />
+        <parent link="camera_adaptor" />
         <child link="camera_mount_link" />
     </joint>
     <joint name="caster_wheel_joint" type="fixed">
-        <origin xyz="-0.24075 0.01875 0" rpy="-4.6598e-91 1.75162e-46 -5.32056e-45" />
+        <origin xyz="-0.24075 0.01875 0" rpy="5.32907e-15 -3.06177e-29 -3.9968e-15" />
         <axis xyz="-0 -0 1" />
         <parent link="base_link" />
         <child link="caster_wheel_link" />
@@ -374,37 +396,37 @@
         <child link="dcdc_link" />
     </joint>
     <joint name="deck_joint" type="fixed">
-        <origin xyz="-0.1225 0.0475 0.005" rpy="-5.32907e-15 1.06496e-29 -3.9443e-31" />
+        <origin xyz="-0.1225 0.0475 0.005" rpy="1.97215e-31 -3.06177e-29 -3.9968e-15" />
         <axis xyz="0 0 1" />
         <parent link="base_link" />
         <child link="deck_link" />
     </joint>
     <joint name="driver_board_joint" type="fixed">
-        <origin xyz="-0.111954 -1.68498e-18 0" rpy="-2.66454e-15 2.66454e-15 1.5708" />
+        <origin xyz="-0.111954 -5.15443e-18 0" rpy="-7.99361e-15 7.99361e-15 1.5708" />
         <axis xyz="0 0 1" />
         <parent link="base_link" />
         <child link="driver_board_link" />
     </joint>
     <joint name="imu_joint" type="fixed">
-        <origin xyz="-0.0539 -0.0026 -0.00457" rpy="-3.14159 -2.66241e-29 9.86076e-31" />
+        <origin xyz="-0.0539 -0.0026 -0.00457" rpy="-3.14159 -6.25665e-29 -3.9968e-15" />
         <axis xyz="0 0 1" />
         <parent link="base_link" />
         <child link="imu_link" />
     </joint>
     <joint name="laser_joint" type="fixed">
-        <origin xyz="-0.0293 -0.0475 0.0895963" rpy="9.39526e-15 -1.38778e-17 5.25962e-30" />
+        <origin xyz="-0.0293 -0.0475 0.0985963" rpy="1.40166e-15 -1.38778e-17 -9.72595e-33" />
         <axis xyz="1.38778e-17 1.40166e-15 1" />
         <parent link="deck_link" />
         <child link="laser" />
     </joint>
     <joint name="motor_driver_left_joint" type="fixed">
-        <origin xyz="0.01924 -0.00941 -0.005" rpy="1.5708 5.55112e-17 -1.5708" />
+        <origin xyz="0.01924 -0.00941 -0.005" rpy="1.5708 -0 -1.5708" />
         <axis xyz="0 1 0" />
         <parent link="driver_board_link" />
         <child link="motor_driver_left_link" />
     </joint>
     <joint name="motor_driver_right_joint" type="fixed">
-        <origin xyz="-0.01924 -0.00941 -0.005" rpy="1.5708 5.55112e-17 -1.5708" />
+        <origin xyz="-0.01924 -0.00941 -0.005" rpy="1.5708 -0 -1.5708" />
         <axis xyz="0 1 0" />
         <parent link="driver_board_link" />
         <child link="motor_driver_right_link" />
@@ -416,13 +438,13 @@
         <child link="motor_left_link" />
     </joint>
     <joint name="motor_mount_left_joint" type="fixed">
-        <origin xyz="-0.04385 0.08955 1.38778e-17" rpy="3.14159 -8.09407e-28 3.14159" />
+        <origin xyz="-0.04385 0.08955 9.71445e-16" rpy="3.14159 -7.79529e-28 3.14159" />
         <axis xyz="0 0 -1" />
         <parent link="base_link" />
         <child link="motor_mount_left_link" />
     </joint>
     <joint name="motor_mount_right_joint" type="fixed">
-        <origin xyz="-0.04385 -0.08955 1.38778e-17" rpy="-3.14159 4.16001e-32 -7.49401e-16" />
+        <origin xyz="-0.04385 -0.08955 -9.4369e-16" rpy="-3.14159 -3.19073e-29 -4.7462e-15" />
         <axis xyz="-0 -0 -1" />
         <parent link="base_link" />
         <child link="motor_mount_right_link" />
@@ -446,7 +468,7 @@
         <child link="pi_mount_link" />
     </joint>
     <joint name="power_bracket_joint" type="fixed">
-        <origin xyz="-0.136954 0.08 0" rpy="1.5708 4.71845e-15 1.5708" />
+        <origin xyz="-0.136954 0.08 0" rpy="1.5708 1.40443e-14 1.5708" />
         <axis xyz="0 1 0" />
         <parent link="base_link" />
         <child link="power_bracket_link" />
